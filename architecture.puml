@@ -1,0 +1,14 @@
+@startuml
+user --> [UI]: input
+[UI] --> user: display
+[UI] --> [AI]: problem
+[AI] --> [UI]: solution
+[Trainer] --> [AI]: weights
+[AI] --> [Trainer]: performance
+[Database] --> [Trainer]: training data
+[Crawler] --> (riot api): api request
+(riot api) --> [Crawler]: api response
+[Crawler] --> [Data Processor]: unprocessed data
+[Data Processor] --> [Database]: processed data
+
+@enduml
