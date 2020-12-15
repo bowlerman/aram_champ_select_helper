@@ -1,4 +1,4 @@
-@startuml Architechture
+@startuml Architecture
 
 user --> [UI]: input
 [UI] --> user: display
