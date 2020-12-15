@@ -1,5 +1,6 @@
 import requests
 import typing # noqa F401
+import time
 
 with open('Crawler/api_key.txt', 'r') as api_key_file:
     api_key = api_key_file.readline()
@@ -9,17 +10,53 @@ def get_match_info(match_id: str):
     platform_url = 'https://euw1.api.riotgames.com'
     match_api_url = '/lol/match/v4/matches/'
     match_id = match_id
-    r = requests.get(platform_url + match_api_url + match_id, params={'api_key': api_key})
-    return r.json()
+    r = requests.get(platform_url + match_api_url + match_id,
+                     params={'api_key': api_key})
+    if r.status_code == 200:
+        return r.json()
+    else:
+        raise requests.HTTPError('did not get match response, status code: ',
+                                 r.status_code)
 
 
-requests_count = 3
+def is_aram(match_info):
+    if match_info['queueId'] == 65:
+        return True
+    return False
+
+
+def data_processing(match_info):
+    #processed_game_info = {}
+    #
+    pass
+
+
+request_counter = 0
+requests_count = 1
 match_id = 2901155157
 match_info = []
+number_of_game_ids_not_found = 0
+t0_20_request = time.time()
+t0_100_request = time.time()
 for _ in range(requests_count):
+    try:
+        match_info.append(get_match_info(str(match_id)))
+    except requests.HTTPError:
+        number_of_game_ids_not_found += 1
     match_id += 1
-    match_info.append(get_match_info(str(match_id)))
-print('length of list: ', len(match_info))
+    request_counter += 1
+    if request_counter % 20 == 0:
+        diff = time.time() - t0_20_request
+        if diff < 1:
+            time.sleep(1-diff)
+        t0_20_request = time.time()
+    if request_counter % 100 == 0:
+        diff = time.time() - t0_100_request
+        if diff < 120:
+            time.sleep(120-diff)
+        t0_100_request = time.time()
+print(len(match_info))
+print(number_of_game_ids_not_found)
 
 if __name__ == '__main__':
     # start test: testing match id
@@ -27,7 +64,8 @@ if __name__ == '__main__':
     match_info = get_match_info(test_match_id)
     if 'gameCreation' in match_info:
         if match_info['gameCreation'] == 1477325559029:
-            print('get_match_info function, passed')
+            print('get_match_info function, passed', match_info)
         else:
-            print('wrong id, get_match_info function failed, correct id: ', match_info['gameCreation'])
+            print('wrong id, get_match_info function failed, correct id: ',
+                  match_info['gameCreation'])
     # end test: testing match id
