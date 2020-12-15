@@ -1,4 +1,5 @@
-@startuml
+@startuml Architechture
+
 user --> [UI]: input
 [UI] --> user: display
 [UI] --> [AI]: problem
