@@ -1,7 +1,7 @@
 import requests
 import typing
 
-with open('api_key.txt', 'r') as api_key_file:
+with open('Crawler/api_key.txt', 'r') as api_key_file:
     api_key = api_key_file.readline()
 
 def get_match_info(match_id:str):
