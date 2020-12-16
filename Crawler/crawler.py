@@ -46,37 +46,38 @@ def data_processing(match_info):
         if team['win'] == 'Win':
             winner = team['teamId']
             break
-    data = {'win': winner, '100': team_100_champs, '200': team_200_champs}
+    data = {'win': winner, 100: team_100_champs, 200: team_200_champs}
     return data
 
 
-
-request_counter = 0
-requests_count = 1
-match_id = 2901155157
+number_of_aram_games = 0
+valid_request_counter = 0
+number_of_requests = 20
+match_id = 2901255157
 match_info = []
 number_of_game_ids_not_found = 0
 t0_20_request = time.time()
 t0_100_request = time.time()
-for _ in range(requests_count):
+for _ in range(number_of_requests):
     try:
         match_info.append(get_match_info(str(match_id)))
     except requests.HTTPError:
         number_of_game_ids_not_found += 1
+    if is_aram(match_info[-1]):
+        number_of_aram_games += 1
     match_id += 1
-    request_counter += 1
-    if request_counter % 20 == 0:
+    valid_request_counter += 1
+    if valid_request_counter % 20 == 0:
         diff = time.time() - t0_20_request
         if diff < 1:
             time.sleep(1-diff)
         t0_20_request = time.time()
-    if request_counter % 100 == 0:
+    if valid_request_counter % 100 == 0:
         diff = time.time() - t0_100_request
         if diff < 120:
             time.sleep(120-diff)
         t0_100_request = time.time()
-print(len(match_info))
-print(number_of_game_ids_not_found)
+
 
 if __name__ == '__main__':
     # start test: testing match id
@@ -84,8 +85,21 @@ if __name__ == '__main__':
     match_info = get_match_info(test_match_id)
     if 'gameCreation' in match_info:
         if match_info['gameCreation'] == 1477325559029:
-            print('get_match_info function, passed', match_info)
+            print('get_match_info function, passed')
         else:
-            print('wrong id, get_match_info function failed, correct id: ',
+            print('\nwrong id, get_match_info function failed, correct id: ',
                   match_info['gameCreation'])
     # end test: testing match id
+    # start test: processing data
+    test_match_id = '2901155157'
+    match_info = get_match_info(test_match_id)
+    data = data_processing(match_info)
+    if data == {'win': 100, 100: [15, 1, 267, 19, 13],
+                200: [78, 89, 45, 67, 64]}:
+        print('\ndata processing test passed')
+    else:
+        print('\ndata processing test failed')
+    # end test:
+    #testing number of aram games
+    print('\nthe number of aram games: ', number_of_aram_games)
+    #end test
