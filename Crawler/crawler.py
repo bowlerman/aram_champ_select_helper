@@ -44,6 +44,7 @@ def data_processing(match_info):
     else:
         team_100 = 'win'               
 
+
 request_counter = 0
 requests_count = 1
 match_id = 2901155157 
