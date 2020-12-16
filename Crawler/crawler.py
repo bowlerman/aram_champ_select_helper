@@ -26,14 +26,27 @@ def is_aram(match_info):
 
 
 def data_processing(match_info):
-    #processed_game_info = {}
-    #
-    pass
-
+    team_100_champs = []
+    team_200_champs = []
+    team_100 = ''
+    for participant in match_info['participants']:
+        if participant['teamId'] == 100:      
+            team_100_champs.append(participant['championId'])
+        else:
+            team_200_champs.append(participant['championId'])   
+    if match_info['teams'][0]['win'] == 'Win':
+        if match_info['teams'][0]['teamId'] == 100:
+            team_100 = 'win'
+            
+        team_100 = 'fail'
+    if match_info['teams'][0]['teamId'] == 100:
+        team_100 = 'fail'
+    else:
+        team_100 = 'win'               
 
 request_counter = 0
 requests_count = 1
-match_id = 2901155157
+match_id = 2901155157 
 match_info = []
 number_of_game_ids_not_found = 0
 t0_20_request = time.time()
