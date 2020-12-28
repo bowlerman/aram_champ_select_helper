@@ -1,7 +1,28 @@
 import requests
 import typing # noqa F401
 import time
+import logging
+from pymongo import MongoClient
+client = MongoClient('localhost', 27017)
+db = client.aram_champ_select_helper
+# Create a custom logger
+logger = logging.getLogger(__name__)
 
+# Create handlers
+c_handler = logging.StreamHandler()
+f_handler = logging.FileHandler('Crawler/crawler.log')
+c_handler.setLevel(logging.WARNING)
+f_handler.setLevel(logging.ERROR)
+# Create formatters and add it to handlers
+
+c_format = logging.Formatter('%(name)s - %(levelname)s - %(message)s')
+f_format = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+c_handler.setFormatter(c_format)
+f_handler.setFormatter(f_format)
+
+# Add handlers to the logger
+logger.addHandler(c_handler)
+logger.addHandler(f_handler)
 with open('Crawler/api_key.txt', 'r') as api_key_file:
     api_key = api_key_file.readline()
 
@@ -15,8 +36,14 @@ def get_match_info(match_id: str):
     if r.status_code == 200:
         return r.json()
     else:
-        raise requests.HTTPError('did not get match response, status code: ',
-                                 r.status_code)
+        e = requests.HTTPError('status code: ', r.status_code)
+        e.response = r
+        raise e
+
+
+def store_match_data(processed_match_info):
+    match_data = db.match_data
+    match_data.insert_one(processed_match_info)
 
 
 def is_aram(match_info):
@@ -37,6 +64,7 @@ def data_processing(match_info):
     team_100_champs = []
     team_200_champs = []
     winner = ''
+    match_id = match_info['gameId']
     for participant in match_info['participants']:
         if participant['teamId'] == 100:
             team_100_champs.append(participant['championId'])
@@ -46,25 +74,28 @@ def data_processing(match_info):
         if team['win'] == 'Win':
             winner = team['teamId']
             break
-    data = {'win': winner, 100: team_100_champs, 200: team_200_champs}
+    data = {'match_id': match_id, 'win': winner, '100': team_100_champs, '200': team_200_champs}
     return data
 
 
-number_of_aram_games = 0
 valid_request_counter = 0
-number_of_requests = 20
-match_id = 2901255157
-match_info = []
-number_of_game_ids_not_found = 0
+number_of_requests = 10000
+match_id = 2901256757
 t0_20_request = time.time()
 t0_100_request = time.time()
-for _ in range(number_of_requests):
+while True:
+    if valid_request_counter % 500 == 0:
+        print(time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(1347517370)),
+              'match id: ', match_id, 'number of requests so far: ',
+              valid_request_counter, '\n')
     try:
-        match_info.append(get_match_info(str(match_id)))
-    except requests.HTTPError:
-        number_of_game_ids_not_found += 1
-    if is_aram(match_info[-1]):
-        number_of_aram_games += 1
+        match_info = get_match_info(str(match_id))
+        if is_aram(match_info):
+            match_info = data_processing(match_info)
+            store_match_data(match_info)
+    except requests.HTTPError as e:
+        if e.response.status_code != 404:
+            logger.error(match_id, exc_info=True)
     match_id += 1
     valid_request_counter += 1
     if valid_request_counter % 20 == 0:
@@ -100,6 +131,3 @@ if __name__ == '__main__':
     else:
         print('\ndata processing test failed')
     # end test:
-    #testing number of aram games
-    print('\nthe number of aram games: ', number_of_aram_games)
-    #end test
