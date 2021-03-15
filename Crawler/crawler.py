@@ -1,5 +1,4 @@
 import requests
-import typing # noqa F401
 import time
 import logging
 from pymongo import MongoClient
@@ -8,6 +7,7 @@ db = client.aram_champ_select_helper
 # Create a custom logger
 logger = logging.getLogger(__name__)
 
+
 # Create handlers
 c_handler = logging.StreamHandler()
 f_handler = logging.FileHandler('Crawler/crawler.log')
@@ -15,10 +15,12 @@ c_handler.setLevel(logging.WARNING)
 f_handler.setLevel(logging.ERROR)
 # Create formatters and add it to handlers
 
+
 c_format = logging.Formatter('%(name)s - %(levelname)s - %(message)s')
 f_format = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 c_handler.setFormatter(c_format)
 f_handler.setFormatter(f_format)
+
 
 # Add handlers to the logger
 logger.addHandler(c_handler)
@@ -74,40 +76,48 @@ def data_processing(match_info):
         if team['win'] == 'Win':
             winner = team['teamId']
             break
-    data = {'match_id': match_id, 'win': winner, '100': team_100_champs, '200': team_200_champs}
+    data = {'match_id': match_id, 'win': winner, '100': team_100_champs,
+            '200': team_200_champs}
     return data
 
 
-valid_request_counter = 0
+request_counter = 0
 number_of_requests = 10000
-match_id = 2901256757
+match_id = 3201256855
 t0_20_request = time.time()
 t0_100_request = time.time()
+
 while True:
-    if valid_request_counter % 500 == 0:
+    if request_counter % 500 == 0:
         print(time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(1347517370)),
               'match id: ', match_id, 'number of requests so far: ',
-              valid_request_counter, '\n')
+              request_counter, '\n')
+    request_counter += 1
+    if request_counter % 20 == 0:
+        diff = time.time() - t0_20_request
+        if diff < 1:
+            time.sleep(1-diff)
+        t0_20_request = time.time()
+    if request_counter % 100 == 0:
+        diff = time.time() - t0_100_request
+        if diff < 120:
+            time.sleep(120-diff)
+        t0_100_request = time.time()
     try:
         match_info = get_match_info(str(match_id))
         if is_aram(match_info):
             match_info = data_processing(match_info)
             store_match_data(match_info)
     except requests.HTTPError as e:
-        if e.response.status_code != 404:
+        if e.response.status_code == 504:
+            time.sleep(1)
+            continue
+        if e.response.status_code == 429:
+            time.sleep(1)
+            continue
+        elif e.response.status_code != 404:
             logger.error(match_id, exc_info=True)
     match_id += 1
-    valid_request_counter += 1
-    if valid_request_counter % 20 == 0:
-        diff = time.time() - t0_20_request
-        if diff < 1:
-            time.sleep(1-diff)
-        t0_20_request = time.time()
-    if valid_request_counter % 100 == 0:
-        diff = time.time() - t0_100_request
-        if diff < 120:
-            time.sleep(120-diff)
-        t0_100_request = time.time()
 
 
 if __name__ == '__main__':
