@@ -83,13 +83,13 @@ def data_processing(match_info):
 
 request_counter = 0
 number_of_requests = 10000
-match_id = 3201256855
+match_id = 5142986139
 t0_20_request = time.time()
 t0_100_request = time.time()
 
 while True:
     if request_counter % 500 == 0:
-        print(time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(1347517370)),
+        print(time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(time.time())),
               'match id: ', match_id, 'number of requests so far: ',
               request_counter, '\n')
     request_counter += 1
@@ -101,18 +101,22 @@ while True:
     if request_counter % 100 == 0:
         diff = time.time() - t0_100_request
         if diff < 120:
+            print("diff",)
             time.sleep(120-diff)
         t0_100_request = time.time()
     try:
         match_info = get_match_info(str(match_id))
+        print(match_id)
         if is_aram(match_info):
             match_info = data_processing(match_info)
             store_match_data(match_info)
     except requests.HTTPError as e:
         if e.response.status_code == 504:
+            print("504")
             time.sleep(1)
             continue
         if e.response.status_code == 429:
+            print("429")
             time.sleep(1)
             continue
         elif e.response.status_code != 404:
