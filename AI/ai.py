@@ -49,6 +49,13 @@ def one_hot_to_champ_list(one_hot):
     return champ_list
 
 
+def champ_list_to_one_hot(champ_list):
+    one_hot = [0]*NUM_CHAMPS
+    for champ in champ_list:
+        one_hot[champ_to_index(champ)] = 1
+    return one_hot
+
+
 x = []
 y = []
 
@@ -89,7 +96,7 @@ model.fit(x_train, y_train, epochs=10)
 model.evaluate(x_test, y_test)
 predictions = model.predict(x_test)
 
-
+"""
 # Checking if the certainty of the model is accurate
 bound_interval = 0.05
 bounds = [0.5 + i*bound_interval for i in range(round(0.5/bound_interval))]
@@ -108,3 +115,57 @@ for bound in bounds:
         print("Correct guesses:  {}".format(correct))
         print("Percentage correct:  {:.1%}".format(correct/count))
         print()
+"""
+
+
+def champ_list_is_valid(champ_list):
+    for champ in champ_list:
+        if champ_to_index(champ) is None:
+            return False
+    return True
+
+
+def combinations(list1, n):
+    out = []
+    if n == 1:
+        return [[elem] for elem in list1]
+    for i in range(len(list1)):
+        out += [[list1[i]] + combination for combination in combinations(list1[i+1:], n-1)]
+    return out
+
+# Temp terminal app for aram champ select
+team = []
+bench = []
+while True:
+    command = input("> ")
+    commands = command.split()
+    if commands == []:
+        continue
+    elif commands[0] == "team":
+        if champ_list_is_valid(commands[1:]):
+            team = commands[1:]
+            print("Team champs updated")
+        else:
+            print("Please input 4 champs (capitals matter)")
+    elif commands[0] == "bench":
+        if champ_list_is_valid(commands[1:]):
+            bench = commands[1:]
+            print("Bench updated")
+        else:
+            print("Please input champions (capitals matter)")
+    elif commands[0] == "premades":
+        premades = int(commands[1])
+        print("Premade count updated")
+    elif commands[0] == "eval":
+        if len(team) == 5:
+            comp = np.array([champ_list_to_one_hot(team), ])
+            chance = model.predict(comp)[0][0]
+            print("Win chance with {}:  {:.1%}".format(team, chance))
+            continue
+        comps = [team + combination for combination in combinations(bench, 5-len(team))]
+        alternatives = np.array([champ_list_to_one_hot(comp) for comp in comps])
+        chances = model.predict(alternatives)
+        comp_win_pairs = [(comps[i][len(team):], chances[i][0]) for i in range(len(comps))]
+        comp_win_pairs.sort(key=lambda x: -x[1])
+        for comp in comp_win_pairs:
+            print("Win chance with {}: {:.1%}".format(*comp))

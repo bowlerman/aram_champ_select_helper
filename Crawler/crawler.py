@@ -89,7 +89,7 @@ def get_oldest_summoner():
 AGE_LIMIT = arrow.get(arrow.now().int_timestamp-300000)
 DEFAULT_START_TIME = cass.Patch.from_date(AGE_LIMIT).start
 
-insert_match_history("IDEt30cqSuvTUdVJNYoQ3goSJsgtxlHsl7OlcqrLh9DyjA", DEFAULT_START_TIME)
+insert_match_history("7gIWsxZ9eslfxWNm3Wly9BpnAoQD8qPoNhV7eJJFbUOOqUJnhGlZM-75", DEFAULT_START_TIME)
 while True:
     try:
         account_id = get_oldest_summoner()
