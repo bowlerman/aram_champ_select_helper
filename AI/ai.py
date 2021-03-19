@@ -2,6 +2,7 @@ import tensorflow as tf
 import requests
 from pymongo import MongoClient
 import numpy as np
+import random
 
 client = MongoClient('localhost', 27017)
 db = client.aram_champ_select_helper
@@ -40,10 +41,18 @@ def champid_to_champ(champ_id):
             return champ[0]
 
 
+def one_hot_to_champ_list(one_hot):
+    champ_list = []
+    for i in range(len(one_hot)):
+        if one_hot[i]:
+            champ_list.append(index_to_champ(i))
+    return champ_list
+
+
 x = []
 y = []
 
-for document in match_data.find({}, {'100': 1, '200': 1, 'win': 1, '_id': 0}):
+for document in match_data.find({"patch": "11.5.361.3108"}, {'100': 1, '200': 1, 'win': 1, '_id': 0}):
     for team in ['100', '200']:
         team_comp = [0]*NUM_CHAMPS
         for champ in document[team]:
@@ -63,26 +72,12 @@ y_train = y[:l]
 x_test = x[l:]
 y_test = y[l:]
 
-x_new = [[0]*NUM_CHAMPS, [0]*NUM_CHAMPS]
-for i in range(5):
-    x_new[0][7*i+3] = 1
-for i in range(4):
-    x_new[1][7*i+3] = 1
-x_new[1][114] = 1
-print(x_new)
-champname = []
-
-for l in range(len(x_new)):
-    for index in range(len(x_new[l])):
-        print(index)
-        if x_new[l][index] == 1:
-            champname.append(index_to_champ(index))
-x_new = np.array(x_new)
 model = tf.keras.models.Sequential([
     tf.keras.Input(shape=(NUM_CHAMPS,)),
-    tf.keras.layers.Dense(128, activation='relu'),
+    tf.keras.layers.Dense(256, activation='sigmoid'),
     tf.keras.layers.Dropout(0.2),
-    tf.keras.layers.Dense(64, activation='relu'),
+    tf.keras.layers.Dense(64, activation='sigmoid'),
+    tf.keras.layers.Dense(64, activation='sigmoid'),
     tf.keras.layers.Dense(2, activation='softmax', name='result')
 ])
 
@@ -90,12 +85,26 @@ model.compile(optimizer='adam',
               loss='binary_crossentropy',
               metrics=['accuracy'])
 
-model.fit(x_train, y_train, epochs=20)
+model.fit(x_train, y_train, epochs=10)
 model.evaluate(x_test, y_test)
-print(model(x[:4]), y[:2])
-print(model(x_new))
-for champ_id in match_data.find({}, {'100': 1, '200': 1, 'win': 1, '_id': 0})[0]['100']:
-    print(champid_to_champ(champ_id))
+predictions = model.predict(x_test)
 
 
-print(champname)
+# Checking if the certainty of the model is accurate
+bound_interval = 0.05
+bounds = [0.5 + i*bound_interval for i in range(round(0.5/bound_interval))]
+for bound in bounds:
+    count = 0
+    correct = 0
+    for i in range(len(predictions)):
+        for j in [0, 1]:
+            if bound < predictions[i][j] <= bound + bound_interval:
+                count += 1
+                if y_test[i][j]:
+                    correct += 1
+    if count:
+        print("Model certainty:  {:.3}-{:.3}".format(bound, bound+bound_interval))
+        print("Sample size:  {}".format(count))
+        print("Correct guesses:  {}".format(correct))
+        print("Percentage correct:  {:.1%}".format(correct/count))
+        print()

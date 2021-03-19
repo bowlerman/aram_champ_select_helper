@@ -86,13 +86,13 @@ def get_oldest_summoner():
     return DB.summoners.find().sort("time_at_last_fetch", direction=1).limit(1).next()["account_id"]
 
 
-AGE_LIMIT = arrow.get(arrow.now().int_timestamp-5000000)
+AGE_LIMIT = arrow.get(arrow.now().int_timestamp-300000)
 DEFAULT_START_TIME = cass.Patch.from_date(AGE_LIMIT).start
 
-
+insert_match_history("IDEt30cqSuvTUdVJNYoQ3goSJsgtxlHsl7OlcqrLh9DyjA", DEFAULT_START_TIME)
 while True:
-    account_id = get_oldest_summoner()
-    insert_match_history(account_id, DEFAULT_START_TIME)
-
-# The below command can be used to initialize the database
-#insert_match_history("IDEt30cqSuvTUdVJNYoQ3goSJsgtxlHsl7OlcqrLh9DyjA", DEFAULT_START_TIME)
+    try:
+        account_id = get_oldest_summoner()
+        insert_match_history(account_id, DEFAULT_START_TIME)
+    except Exception as e:
+        print(e)
