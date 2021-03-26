@@ -49,6 +49,13 @@ def one_hot_to_champ_list(one_hot):
     return champ_list
 
 
+def champ_id_list_to_one_hot(champ_list):
+    one_hot = [0]*NUM_CHAMPS
+    for champ in champ_list:
+        onehot[champid_to_index(champ)] = 1
+    return one_hot
+
+
 def champ_list_to_one_hot(champ_list):
     one_hot = [0]*NUM_CHAMPS
     for champ in champ_list:
@@ -80,8 +87,7 @@ x_test = x[l:]
 y_test = y[l:]
 
 model = tf.keras.models.Sequential([
-    tf.keras.Input(shape=(NUM_CHAMPS,)),
-    tf.keras.layers.Dense(256, activation='sigmoid'),
+    tf.keras.layers.Dense(256, activation='sigmoid', input_shape=(NUM_CHAMPS,)),
     tf.keras.layers.Dropout(0.2),
     tf.keras.layers.Dense(64, activation='sigmoid'),
     tf.keras.layers.Dense(64, activation='sigmoid'),
@@ -95,7 +101,7 @@ model.compile(optimizer='adam',
 model.fit(x_train, y_train, epochs=10)
 model.evaluate(x_test, y_test)
 predictions = model.predict(x_test)
-
+model.save("AI/model", save_format=tf.keras.experimental.export_saved_model)
 """
 # Checking if the certainty of the model is accurate
 bound_interval = 0.05
@@ -169,3 +175,4 @@ while True:
         comp_win_pairs.sort(key=lambda x: -x[1])
         for comp in comp_win_pairs:
             print("Win chance with {}: {:.1%}".format(*comp))
+
