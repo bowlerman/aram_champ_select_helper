@@ -10,9 +10,7 @@ connector = Connector()
 
 lol_version = requests.get("https://ddragon.leagueoflegends.com/api/versions.json").json()[0]
 champ_data = requests.get("https://ddragon.leagueoflegends.com/cdn/" + lol_version + "/data/en_US/champion.json").json()["data"]
-CHAMPS = []
-for champ in champ_data:
-    CHAMPS.append((champ, int(champ_data[champ]["key"])))
+CHAMPS = [(champ, int(champ_data[champ]["key"])) for champ in champ_data]
 CHAMPS.sort(key=lambda x: x[1])
 NUM_CHAMPS = len(champ_data)
 
@@ -59,16 +57,15 @@ def combinations(list1, n):
 
 
 def filter_champ_select_data(data):
-    team = {}
-    for player in data["myTeam"]:
-        team[player["summonerId"]] = player["championId"]
+    team = {
+        player["summonerId"]: player["championId"] for player in data["myTeam"]
+    }
     bench = data["benchChampionIds"]
     return team, bench
 
 
 def filter_lobby_data(data):
-    premades = []
-    premades.append(data["localMember"]["summonerId"])
+    premades = [data["localMember"]["summonerId"]]
     for member in data["members"]:
         id = member["summonerId"]
         if id != premades[0]:

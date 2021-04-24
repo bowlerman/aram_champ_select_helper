@@ -11,9 +11,7 @@ match_data = db.match_data
 
 lol_version = requests.get("https://ddragon.leagueoflegends.com/api/versions.json").json()[0]
 champ_data = requests.get("https://ddragon.leagueoflegends.com/cdn/" + lol_version + "/data/en_US/champion.json").json()["data"]
-CHAMPS = []
-for champ in champ_data:
-    CHAMPS.append((champ, int(champ_data[champ]["key"])))
+CHAMPS = [(champ, int(champ_data[champ]["key"])) for champ in champ_data]
 CHAMPS.sort(key=lambda x: x[1])
 
 NUM_CHAMPS = len(champ_data)
@@ -42,17 +40,13 @@ def champid_to_champ(champ_id):
 
 
 def one_hot_to_champ_list(one_hot):
-    champ_list = []
-    for i in range(len(one_hot)):
-        if one_hot[i]:
-            champ_list.append(index_to_champ(i))
-    return champ_list
+    return [index_to_champ(i) for i in range(len(one_hot)) if one_hot[i]]
 
 
 def champ_id_list_to_one_hot(champ_list):
     one_hot = [0]*NUM_CHAMPS
     for champ in champ_list:
-        onehot[champid_to_index(champ)] = 1
+        one_hot[champid_to_index(champ)] = 1
     return one_hot
 
 
@@ -125,10 +119,7 @@ for bound in bounds:
 
 
 def champ_list_is_valid(champ_list):
-    for champ in champ_list:
-        if champ_to_index(champ) is None:
-            return False
-    return True
+    return all(champ_to_index(champ) is not None for champ in champ_list)
 
 
 def combinations(list1, n):

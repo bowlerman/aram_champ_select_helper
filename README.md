@@ -1,12 +1,3 @@
-# AI
-unprocessed input
-4 champs - others
-1 champ - me
-0-10 - on bench
-processed input
-167 me/bench nodes
-167 others nodes
-unprocessed output
-167 nodes
-processed output
-1 champ to pick
+## Disclaimer
+
+ARAM Assistant isn't endorsed by Riot Games and doesn't reflect the views or opinions of Riot Games or anyone officially involved in producing or managing Riot Games properties. Riot Games, and all associated properties are trademarks or registered trademarks of Riot Games, Inc.

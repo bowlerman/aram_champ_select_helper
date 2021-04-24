@@ -16,9 +16,7 @@ def store_match_data(processed_match_info):
 
 
 def is_aram(match_info):
-    if match_info['queueId'] == 65 or match_info['queueId'] == 450:
-        return True
-    return False
+    return match_info['queueId'] in [65, 450]
 
 
 def process_data(match_info):
@@ -45,9 +43,8 @@ def process_data(match_info):
         if team['isWinner']:
             winner = team['side'].value
             break
-    data = {'match_id': match_id, 'win': winner, '100': team_100_champs,
+    return {'match_id': match_id, 'win': winner, '100': team_100_champs,
             '200': team_200_champs, 'patch': patch}
-    return data
 
 def store_summoner(account_id):
     summoners = DB.summoners
@@ -56,19 +53,18 @@ def store_summoner(account_id):
 
 def fetch_match_history(account_id, begin_time):
     summoner = cass.Summoner(account_id=account_id, region="EUW")
-    match_history = cass.MatchHistory(summoner=summoner, queues={
+    return cass.MatchHistory(summoner=summoner, queues={
                                       cass.Queue.aram}, begin_time=begin_time)
-    return match_history
 
 
 def match_in_db(match):
     match_data = DB.match_data
-    return not match_data.find_one({"match_id": match.id}) is None
+    return match_data.find_one({"match_id": match.id}) is not None
 
 
 def insert_match_history(account_id, begin_time):
     cached_summoner = DB.summoners.find_one({"account_id": account_id})
-    if not (cached_summoner is None):
+    if cached_summoner is not None:
         begin_time = max(arrow.get(cached_summoner["time_at_last_fetch"]), begin_time)
     match_history = fetch_match_history(account_id, begin_time)
     if len(match_history) == 0 and begin_time < AGE_LIMIT:
