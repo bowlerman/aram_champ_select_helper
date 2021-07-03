@@ -115,7 +115,7 @@ for bound in bounds:
         print("Correct guesses:  {}".format(correct))
         print("Percentage correct:  {:.1%}".format(correct/count))
         print()
-"""
+
 
 
 def champ_list_is_valid(champ_list):
@@ -166,4 +166,4 @@ while True:
         comp_win_pairs.sort(key=lambda x: -x[1])
         for comp in comp_win_pairs:
             print("Win chance with {}: {:.1%}".format(*comp))
-
+"""
