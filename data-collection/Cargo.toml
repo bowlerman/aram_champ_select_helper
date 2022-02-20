@@ -1,8 +1,13 @@
 [package]
-name = "model-trainer"
+name = "data-collection"
 version = "0.1.0"
 edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+riven = "2.2.0"
+log = "0.4.14"
+tokio = { version = "1.13.0", features = ["full"] }
+mongodb = "2.1.0"
+serde = "1.0.136"
