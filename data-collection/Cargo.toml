@@ -11,3 +11,5 @@ log = "0.4.14"
 tokio = { version = "1.13.0", features = ["full"] }
 mongodb = "2.1.0"
 serde = "1.0.136"
+futures-core = "0.3.21"
+futures = "0.3.21"

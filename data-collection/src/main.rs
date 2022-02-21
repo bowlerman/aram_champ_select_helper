@@ -1,3 +1,4 @@
+use futures::stream::StreamExt;
 use mongodb::bson::{doc, Bson};
 use mongodb::options::{ClientOptions, UpdateOptions};
 use mongodb::{Client, Collection, Database, IndexModel};
@@ -5,9 +6,11 @@ use riven::consts::{Champion, PlatformRoute, Queue, RegionalRoute};
 use riven::models::match_v5::Match;
 use riven::RiotApi;
 use serde::{Deserialize, Serialize};
+use std::collections::HashSet;
 use std::convert::Infallible;
 use std::error::Error;
 use std::fmt::Display;
+use std::hash::Hash;
 use std::time::{SystemTime, UNIX_EPOCH};
 use tokio::try_join;
 
@@ -45,7 +48,7 @@ struct SummonerDocument {
     time_at_last_fetch: i64,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Hash)]
 struct MatchDocument {
     blue_champs: [Champion; 5], // champs of Team 100
     red_champs: [Champion; 5],  // champs of Team 200
@@ -213,11 +216,11 @@ fn get_puuids_from_match(matc: &Match) -> Result<[String; 10], Box<dyn Error>> {
         puuids.push(participant.puuid.clone());
     }
     let maybe_10puuids: Result<[String; 10], _> = puuids.try_into();
-    let puuids = maybe_10puuids.or_else(|puuids| {
-        Err(Box::new(Not10Players {
+    let puuids = maybe_10puuids.map_err(|puuids| {
+        Box::new(Not10Players {
             match_id: matc.info.game_id,
             players: puuids.len(),
-        }))
+        })
     })?;
     Ok(puuids)
 }
@@ -276,13 +279,13 @@ async fn insert_match_data(
 async fn insert_first_summoner(
     summoner_name: &str,
     summoner_collection: &Collection<SummonerDocument>,
-    riot_api: &mut RiotApi,
+    riot_api: &RiotApi,
 ) -> Result<(), Box<dyn Error>> {
     let summoner = riot_api
         .summoner_v4()
         .get_by_summoner_name(PlatformRoute::EUW1, summoner_name)
         .await?
-        .ok_or_else(|| format!("summoner does not exist"))?;
+        .ok_or_else(|| format!("summoner {} does not exist on the platform", summoner_name))?;
     insert_summoner_by_puuid(summoner.puuid, summoner_collection).await?;
     Ok(())
 }
@@ -326,8 +329,15 @@ async fn filter_match_ids(
     match_collection: &Collection<MatchDocument>,
     match_ids: Vec<String>,
 ) -> Result<Vec<String>, Box<dyn Error>> {
-    // TODO Implement this
-    Ok(match_ids)
+    let old_matches = match_collection
+        .find(doc! { "match_id" : { "$in" : match_ids.clone() } }, None)
+        .await?
+        .filter_map(|e| async move { e.map(|e| e.match_id).ok() })
+        .collect::<HashSet<_>>()
+        .await;
+    let orig_matches = match_ids.into_iter().collect::<HashSet<_>>();
+    let new_matches = orig_matches.difference(&old_matches).map(|s| s.to_owned()).collect::<Vec<String>>();
+    Ok(new_matches)
 }
 
 #[tokio::main]
