@@ -2,5 +2,5 @@
 
 members = [
     "data-collection",
-    "model-trainer"
+    "client"
 ]
