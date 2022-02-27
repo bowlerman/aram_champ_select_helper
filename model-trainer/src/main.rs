@@ -6,17 +6,17 @@ use mongodb::{bson::doc, options::ClientOptions, Client, Collection};
 use riven::consts::Champion;
 use std::{collections::HashMap, error::Error};
 use tch::{nn, nn::Module, nn::OptimizerConfig, Device, Reduction, Tensor, kind::Element};
+use neuroflow::{data::{DataSet, Extractable}, FeedForward};
 
-const TOT_CHAMPS: i64 = 784;
 const HIDDEN_NODES: i64 = 128;
 const TOT_SIZE: i64 = 10000;
 const TIME_LIMIT: i64 = 60 * 60 * 24 * 7;
 
-fn net(vs: &nn::Path) -> impl Module {
+fn net(vs: &nn::Path, tot_champs: i64) -> impl Module {
     nn::seq()
         .add(nn::linear(
             vs / "layer1",
-            TOT_CHAMPS + 1,
+            tot_champs + 1,
             HIDDEN_NODES,
             Default::default(),
         ))
@@ -44,41 +44,29 @@ async fn get_matches(
 fn champ_list_to_nodes(
     champ_list: [Champion; 5],
     all_champs: &HashMap<Champion, usize>,
-) -> Vec<f32> {
-    let mut ret = [0.; (TOT_CHAMPS + 1) as usize];
+) -> Vec<f64> {
+    let tot_champs = all_champs.len();
+    let mut ret = vec![0.; tot_champs + 1];
     for c in champ_list {
         if c.is_known() {
             ret[all_champs[&c]] = 1.;
         } else {
-            ret[TOT_CHAMPS as usize] += 1.;
+            ret[tot_champs] += 1.;
         }
     }
-    ret.to_vec()
+    ret
 }
 
 fn matches_to_nn_data(
     matches: Vec<MatchDocument>,
     all_champs: &HashMap<Champion, usize>,
-) -> (Tensor, Tensor,  Tensor, Tensor) {
-    let ((train_data, train_labels), (test_data, test_labels)): ((Vec<Vec<f32>>, Vec<Vec<f32>>), (Vec<Vec<f32>>, Vec<Vec<f32>>)) = matches.into_iter().take(50000).map(|matc| {
-        match rand::random() {
-            true => (
-                (champ_list_to_nodes(matc.blue_champs, all_champs),
-                if matc.blue_win {vec![1., 0.]} else {vec![0., 1.]}),
-                (champ_list_to_nodes(matc.red_champs, all_champs),
-                if matc.blue_win {vec![0.]} else {vec![1.]}),
-            ),
-            false => (
-                (champ_list_to_nodes(matc.red_champs, all_champs),
-                if !matc.blue_win {vec![1., 0.]} else {vec![0., 1.]}),
-                (champ_list_to_nodes(matc.blue_champs, all_champs),
-                if !matc.blue_win {vec![0.]} else {vec![1.]}),
-            )
-        }
-    }).unzip();
-    assert!{train_data.len() != 0}
-    assert!{test_data.len() != 0}
-    (Tensor::of_slice2(&train_data), Tensor::of_slice2(&train_labels), Tensor::of_slice2(&test_data), Tensor::of_slice2(&test_labels))
+) -> DataSet {
+    let mut data = DataSet::new();
+    for matc in matches {
+        data.push(&champ_list_to_nodes(matc.blue_champs, all_champs), &[Into::<f64>::into(Into::<u8>::into(matc.blue_win)), Into::<f64>::into(Into::<u8>::into(!matc.blue_win))]);
+        data.push(&champ_list_to_nodes(matc.red_champs, all_champs), &[Into::<f64>::into(Into::<u8>::into(!matc.blue_win)), Into::<f64>::into(Into::<u8>::into(matc.blue_win))]);
+    }
+    data
 }
 
 fn init_all_champs() -> HashMap<Champion, usize> {
@@ -94,32 +82,16 @@ fn init_all_champs() -> HashMap<Champion, usize> {
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
     let all_champs = &init_all_champs();
+    let tot_champs = all_champs.len();
     let client_options = ClientOptions::parse("mongodb://localhost:27017");
     let client = Client::with_options(client_options.await?)?;
     let db = &client.database("aram_champ_select_helper");
     let match_collection: &Collection<MatchDocument> = &db.collection("matches");
     let matches = get_matches(match_collection, TIME_LIMIT).await?;
     assert!(matches.len() != 0);
-    let (train_data, train_labels, test_data, test_labels) = matches_to_nn_data(matches, all_champs);
-    let vs = nn::VarStore::new(Device::cuda_if_available());
-    let net = net(&vs.root());
-    let mut opt = nn::Adam::default().build(&vs, 1e-3)?;
-    for epoch in 1..10 {
-        let loss = net.forward(&train_data).binary_cross_entropy_with_logits::<Tensor>(&train_labels, None, None, Reduction::Mean);
-        opt.backward_step(&loss);
-        dbg!{&test_data};
-        dbg!{&test_labels};
-        let test_accuracy = net.forward(&test_data);
-        dbg!(2);
-        let temp = test_accuracy.accuracy_for_logits(&test_labels);
-        dbg!(3);
-        let test_accuracy = temp;
-        println!(
-            "epoch: {:4} train loss: {:8.5} test acc: {:5.2}%",
-            epoch,
-            f64::from(&loss),
-            100. * f64::from(&test_accuracy),
-        );
-    }
+    let data = matches_to_nn_data(matches, all_champs);
+    let mut net = FeedForward::new(&[(tot_champs + 1).try_into()?, 128, 2]);
+    net.activation(neuroflow::activators::Type::Tanh).learning_rate(0.01).train(&data, 50_000);
+    dbg!(net.calc(data.rand().0));
     Ok(())
 }
