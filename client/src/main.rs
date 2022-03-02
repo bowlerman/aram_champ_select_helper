@@ -9,8 +9,8 @@ use serde_json::{self, Value, from_value};
 #[derive(Debug)]
 struct LobbyState {
     your_champ: u16,
-    bench: [u16; 4],
-    team_champs: Vec<u16>
+    bench: Vec<u16>,
+    team_champs: [u16; 4]
 }
 
 type Model = SimplePlan<TypedFact, Box<dyn TypedOp>, Graph<TypedFact, Box<dyn TypedOp>>>;
@@ -72,7 +72,8 @@ async fn get_lobby_state(request: &RequestBuilder, summoner_id: u64) -> Result<L
             team_champs.push(champ_id);
         }
     }
-    Ok(LobbyState{ your_champ, bench, team_champs})
+    let team_champs = team_champs.as_slice().try_into()?;
+    Ok(LobbyState{ your_champ, bench, team_champs })
 }
 
 fn get_model(tot_champs: usize) -> Result<Model, Box<dyn Error>> {
@@ -97,13 +98,15 @@ async fn main() {
     let model = &get_model(tot_champs).unwrap();
     let summoner_id = get_summoner_id().await.unwrap();
     let request = &make_lobby_request().unwrap();
+    println!{"{:?}", get_win_rate(&[22, 16, 79, 112, 32], champ_dict, model)}
     loop {
         let lobby = get_lobby_state(request, summoner_id).await.unwrap();
         for champ in [lobby.your_champ].clone().into_iter().chain(lobby.bench.clone().into_iter()) {
             let team: [u16; 5] = [champ].into_iter().chain(lobby.team_champs.clone().into_iter()).collect::<Vec<_>>().try_into().unwrap();
             let win_rate = get_win_rate(&team, champ_dict, model).unwrap();
-            println!{"{win_rate}"};
+            print!{"{win_rate:.4} "};
         }
+        println!();
     }
     //dioxus::desktop::launch(app)
 }

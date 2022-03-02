@@ -111,12 +111,12 @@ onnxmltools.utils.save_model(onnx_model, 'model-trainer/model.onnx')
 
 # Checking if the certainty of the model is accurate
 bound_interval = 0.01
-bounds = [0.5 + i*bound_interval for i in range(round(0.5/bound_interval))]
+bounds = [0 + i*bound_interval for i in range(round(1/bound_interval))]
 for bound in bounds:
     count = 0
     correct = 0
     for i in range(len(predictions)):
-        for j in [0, 1]:
+        for j in [0]:
             if bound < predictions[i][j] <= bound + bound_interval:
                 count += 1
                 if y_test[i][j]:
