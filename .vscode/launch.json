@@ -63,15 +63,15 @@
         {
             "type": "lldb",
             "request": "launch",
-            "name": "Debug executable 'model-trainer'",
+            "name": "Debug executable 'client'",
             "cargo": {
                 "args": [
                     "build",
-                    "--bin=model-trainer",
-                    "--package=model-trainer"
+                    "--bin=client",
+                    "--package=client"
                 ],
                 "filter": {
-                    "name": "model-trainer",
+                    "name": "client",
                     "kind": "bin"
                 }
             },
@@ -81,16 +81,16 @@
         {
             "type": "lldb",
             "request": "launch",
-            "name": "Debug unit tests in executable 'model-trainer'",
+            "name": "Debug unit tests in executable 'client'",
             "cargo": {
                 "args": [
                     "test",
                     "--no-run",
-                    "--bin=model-trainer",
-                    "--package=model-trainer"
+                    "--bin=client",
+                    "--package=client"
                 ],
                 "filter": {
-                    "name": "model-trainer",
+                    "name": "client",
                     "kind": "bin"
                 }
             },
