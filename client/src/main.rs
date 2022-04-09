@@ -6,9 +6,9 @@ use std::{
 };
 
 use dioxus::prelude::*;
-#[cfg(not(debug_assertions))]
+#[cfg(not(feature = "simulator"))]
 use league_client_connector::LeagueClientConnector;
-#[cfg(not(debug_assertions))]
+#[cfg(not(feature = "simulator"))]
 use reqwest::{Client, RequestBuilder};
 use serde_json::{self, from_value, Value};
 use tokio::time::*;
@@ -16,7 +16,7 @@ use tract_onnx::prelude::*;
 
 type Champ = u16;
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
 struct ChampSelectState {
     your_champ: Champ,
     bench: Vec<Champ>,
@@ -76,7 +76,7 @@ fn map_champ_id_to_index(
     Ok(map)
 }
 
-#[cfg(debug_assertions)]
+#[cfg(feature = "simulator")]
 mod api_mock {
 
     use std::{sync::{Arc, Mutex}, convert::Infallible};
@@ -100,10 +100,12 @@ mod api_mock {
                 "lol-champ-select/v1/session" => {
                     let champ_select_state = CHAMP_SELECT_STATE.lock().unwrap();
                     let mut team_champs: Vec<Value> = champ_select_state.team_champs.iter().map(|champ| json!({
-                        "championId": champ
+                        "championId": champ,
+                        "summonerId": SUMMONER_ID + 1
                     })).collect();
                     team_champs.push(json!({
-                        "championId": champ_select_state.your_champ
+                        "championId": champ_select_state.your_champ,
+                        "summonerId": SUMMONER_ID
                     }));
                     json!(
                     {
@@ -129,14 +131,14 @@ mod api_mock {
     }
 }
 
-#[cfg(debug_assertions)]
+#[cfg(feature = "simulator")]
 use api_mock::*;
 
 fn make_lol_client_api_request(addr: &str) -> Result<RequestBuilder, Box<dyn Error>> {
-    #[cfg(debug_assertions)]{ // During debug return mock for client api
+    #[cfg(feature = "simulator")]{ // During debug return mock for client api
         Ok(RequestBuilder{addr: addr.to_owned()})
     }
-    #[cfg(not(debug_assertions))]{
+    #[cfg(not(feature = "simulator"))]{
         let lock_file = LeagueClientConnector::parse_lockfile()?;
         let request = Client::builder().danger_accept_invalid_certs(true).build()?
         .get(
@@ -162,10 +164,18 @@ async fn try_get_summoner_id() -> Result<u64, Box<dyn Error>> {
     Ok(summoner_id)
 }
 
+#[derive(Debug)]
 struct ChampSelectFetcher {
     request: RequestBuilder,
     summoner_id: u64
 }
+
+impl Clone for ChampSelectFetcher {
+    fn clone(&self) -> Self {
+        Self { request: self.request.try_clone().unwrap(), summoner_id: self.summoner_id.clone() }
+    }
+}
+
 impl ChampSelectFetcher {
     async fn get_champ_select_state(
         &self,
@@ -239,13 +249,11 @@ async fn init_champ_select_fetcher() -> ChampSelectFetcher {
         if let (Ok(summoner_id), _) = tokio::join!(try_get_summoner_id(), wait.tick()) {
             break summoner_id;
         }
-        try_get_summoner_id().await.unwrap();
     };
     let request = loop {
         if let Ok(req) = make_lobby_request() {
             break req;
         }
-        make_lobby_request().unwrap();
         wait.tick().await;
     };
     ChampSelectFetcher{request, summoner_id}
@@ -256,6 +264,7 @@ fn App(cx: Scope) -> Element {
     let champ_select_fetcher = use_future(&cx, (), |_| async {
         init_champ_select_fetcher().await
     }).value();
+    dbg!(champ_select_fetcher.is_none());
     let fetcher = match champ_select_fetcher
     {
         Some(fetcher) => fetcher,
@@ -269,17 +278,26 @@ struct ChampSelectProps<'a> {
     fetcher: &'a ChampSelectFetcher
 }
 
-enum LolClientState {
-    ClientOpenWithChampSelect,
-    ClientOpenWithoutChampSelect,
-    ClientClosed
-}
-
 #[allow(non_snake_case)]
 fn ChampSelect<'a>(cx: Scope<'a, ChampSelectProps<'a>>) -> Element {
     let model = use_state(&cx, || get_model().unwrap()).current().as_ref(); //application is useless without valid model
-    let lol_client_state = use_state(&cx, || LolClientState::ClientOpenWithoutChampSelect);
-    cx.render(rsx!(""))
+    let fetcher = cx.props.fetcher.clone();
+    let champ_select_state_handle: &UseState<Option<ChampSelectState>> = use_state(&cx, || None);
+    let champ_select_state_store = champ_select_state_handle.clone();
+    use_coroutine::<(),_,_>(&cx, |_| async move {
+        let mut wait = interval(Duration::from_millis(1000));
+        loop {
+            if let (Ok(champ_select_state), _) = tokio::join!(fetcher.get_champ_select_state(), wait.tick()) {
+                champ_select_state_store.set(Some(champ_select_state));
+            } else {
+                champ_select_state_store.set(None);
+            }
+            champ_select_state_store.needs_update();
+        };
+    });
+    let state = champ_select_state_handle.current().as_ref().clone();
+    dbg!(state.clone());
+    cx.render(rsx!( "{state:?}" ))
 }
 
 
