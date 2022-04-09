@@ -33,7 +33,7 @@ impl Model {
         let tot_champs = self.champ_dict.len();
         let mut one_hot = vec![0_f32; tot_champs + 1];
         for champ in team {
-            one_hot[self.champ_dict[champ]] = 1.;
+            one_hot[self.champ_dict.get(champ).cloned().unwrap_or(tot_champs)] = 1.;
         }
         let input = tract_ndarray::arr1(&one_hot).into_shape((1, tot_champs + 1))?;
         let tensor_res = self
@@ -79,11 +79,12 @@ fn map_champ_id_to_index(
 #[cfg(feature = "simulator")]
 mod api_mock {
 
-    use std::{sync::{Arc, Mutex}, convert::Infallible};
+    use std::{sync::{Arc, Mutex}, convert::Infallible, io::stdin};
 
     use serde_json::{Value, json};
     use lazy_static::lazy_static;
-    use crate::ChampSelectState;
+    use crate::{ChampSelectState, Champ};
+    use clap::{Parser, Subcommand, AppSettings};
 
     lazy_static! {
         static ref CHAMP_SELECT_STATE: Mutex<ChampSelectState> = Mutex::new(Default::default());
@@ -127,6 +128,54 @@ mod api_mock {
     impl Response {
         pub async fn json(&self) -> Result<Value, Infallible> {
             return Ok(self.response.clone())
+        }
+    }
+
+
+    #[clap(global_setting(AppSettings::NoBinaryName))]
+    #[derive(Parser, Debug)]
+    struct Cli{
+        #[clap(subcommand)]
+        command: Commands
+    }
+
+    #[derive(Subcommand, Debug)]
+    enum Commands{
+        AddBench {champ: Champ},
+        RmBench,
+        YourChamp {champ: Champ},
+        TeamChamps {pos: usize, champ: Champ},
+        Print,
+    }
+
+    use Commands::*;
+
+    pub async fn simulator() {
+        loop {
+            let mut buffer = String::new();
+            stdin().read_line(&mut buffer).unwrap();
+            let maybe_cli = Cli::try_parse_from(buffer.split_whitespace());
+            let cli = match maybe_cli {
+                Ok(cli) => cli,
+                Err(err) => {err.print(); continue}
+            };
+            let mut champ_select_state = CHAMP_SELECT_STATE.lock().unwrap();
+            match cli.command {
+                AddBench{champ} => {
+                    champ_select_state.bench.push(champ)
+                },
+                RmBench => {
+                    champ_select_state.bench.pop();
+                },
+                YourChamp{champ} => {
+                    champ_select_state.your_champ = champ
+                },
+                TeamChamps{pos, champ} => {
+                    champ_select_state.team_champs[pos] = champ
+                },
+                Print => ()
+            }
+            println!("{champ_select_state:?}");
         }
     }
 }
@@ -240,6 +289,8 @@ fn get_model() -> Result<Model, Box<dyn Error>> {
 
 #[tokio::main]
 async fn main() {
+    #[cfg(feature = "simulator")]
+    tokio::spawn(simulator());
     dioxus::desktop::launch(App);
 }
 
@@ -264,7 +315,6 @@ fn App(cx: Scope) -> Element {
     let champ_select_fetcher = use_future(&cx, (), |_| async {
         init_champ_select_fetcher().await
     }).value();
-    dbg!(champ_select_fetcher.is_none());
     let fetcher = match champ_select_fetcher
     {
         Some(fetcher) => fetcher,
@@ -278,28 +328,55 @@ struct ChampSelectProps<'a> {
     fetcher: &'a ChampSelectFetcher
 }
 
+fn ok_ref<T, E>(res: &Result<T, E>) -> Option<&T> {
+    match res {
+        Ok(val) => Some(val),
+        Err(_) => None,
+    }
+}
+
 #[allow(non_snake_case)]
 fn ChampSelect<'a>(cx: Scope<'a, ChampSelectProps<'a>>) -> Element {
-    let model = use_state(&cx, || get_model().unwrap()).current().as_ref(); //application is useless without valid model
+    let model = use_state(&cx, || get_model().unwrap()); //application is useless without valid model
+    let model = model.current();
     let fetcher = cx.props.fetcher.clone();
     let champ_select_state_handle: &UseState<Option<ChampSelectState>> = use_state(&cx, || None);
     let champ_select_state_store = champ_select_state_handle.clone();
     use_coroutine::<(),_,_>(&cx, |_| async move {
         let mut wait = interval(Duration::from_millis(1000));
         loop {
-            if let (Ok(champ_select_state), _) = tokio::join!(fetcher.get_champ_select_state(), wait.tick()) {
-                champ_select_state_store.set(Some(champ_select_state));
-            } else {
-                champ_select_state_store.set(None);
+            let (maybe_champ_select_state, _) = tokio::join!(fetcher.get_champ_select_state(), wait.tick());
+            if ok_ref(&maybe_champ_select_state) != champ_select_state_store.current().as_ref().as_ref() {
+                champ_select_state_store.set(maybe_champ_select_state.ok())
             }
-            champ_select_state_store.needs_update();
         };
     });
     let state = champ_select_state_handle.current().as_ref().clone();
-    dbg!(state.clone());
-    cx.render(rsx!( "{state:?}" ))
+    match state {
+        None => cx.render(rsx!("Waiting for champ select")),
+        Some(champ_select_state) => {
+            let team_champs = champ_select_state.team_champs;
+            let win_rates = champ_select_state.choices().into_iter().filter_map(|choice| {
+                Some((choice, model.get_win_rate(&[choice, team_champs[0], team_champs[1], team_champs[2], team_champs[3]]).ok()?))
+            });
+            let win_rate_displays = win_rates.map(|(choice, win_rate)| rsx!( WinRateDisplay {champ: choice, win_rate: win_rate} ));
+            cx.render(rsx!( win_rate_displays ))
+        },
+    }
 }
 
+#[derive(Props, PartialEq)]
+struct WinRateDisplayProps {
+    champ: Champ,
+    win_rate: f32
+}
+
+#[allow(non_snake_case)]
+fn WinRateDisplay(cx: Scope<WinRateDisplayProps>) -> Element {
+    let win_rate = cx.props.win_rate;
+    let champ = cx.props.champ;
+    cx.render(rsx!("{champ}: {win_rate} "))
+}
 
 /*
 
