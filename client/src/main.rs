@@ -2,7 +2,7 @@ use std::{
     collections::HashMap,
     error::Error,
     fmt::{Debug},
-    fs::File,
+    fs::File, path::Path,
 };
 
 use dioxus::prelude::*;
@@ -237,6 +237,12 @@ impl ChampSelectFetcher {
         let json = base_json
             .as_object()
             .ok_or("Expecting object at top level")?;
+        if let Some(v) = json.get("httpStatus")  {
+            if let Value::Number(_) = v {
+                Err("Not in champ select")?;
+                unreachable!()
+            }
+        }
         let bench = from_value(json["benchChampionIds"].clone())?;
         let mut team_champs = Vec::new();
         let mut your_champ = 0;
@@ -360,7 +366,7 @@ fn ChampSelect<'a>(cx: Scope<'a, ChampSelectProps<'a>>) -> Element {
                 Some((choice, model.get_win_rate(&[choice, team_champs[0], team_champs[1], team_champs[2], team_champs[3]]).ok()?))
             });
             let win_rate_displays = win_rates.map(|(choice, win_rate)| rsx!( WinRateDisplay {champ: choice, win_rate: win_rate} ));
-            cx.render(rsx!( win_rate_displays ))
+            cx.render(rsx!( div {display: "flex", flex_wrap: "wrap", win_rate_displays }))
         },
     }
 }
@@ -373,7 +379,12 @@ struct WinRateDisplayProps {
 
 #[allow(non_snake_case)]
 fn WinRateDisplay(cx: Scope<WinRateDisplayProps>) -> Element {
-    let win_rate = cx.props.win_rate;
+    let win_rate = cx.props.win_rate * 100_f32;
     let champ = cx.props.champ;
-    cx.render(rsx!("{champ}: {win_rate} "))
+    let image_path = if Path::new(&format!("client/champ_icons/{champ}.png")).exists() {
+        format!("client/champ_icons/{champ}.png")
+    } else {
+        "client/champ_icons/generic.png".to_owned()
+    };
+    cx.render(rsx!(div {display: "flex", flex_direction: "column", img {src: "{image_path}", width: "60", height: "60"}, "{win_rate:.1} %"}))
 }
