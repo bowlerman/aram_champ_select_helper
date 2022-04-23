@@ -15,5 +15,10 @@ reqwest = { version = "0.11.9", features = ["json"] }
 lazy_static = "1.4.0"
 clap = { version = "3.1.8", features = ["derive"] }
 
+[build-dependencies]
+serde_json = "1.0.79"
+reqwest = { version = "0.11.9", features = ["blocking"] }
+tokio = { version = "1.13.0", features = [] }
+
 [features]
 simulator = []

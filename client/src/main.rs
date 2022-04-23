@@ -268,10 +268,10 @@ impl ChampSelectFetcher {
 }
 
 fn get_model() -> Result<Model, Box<dyn Error>> {
-    let champs: &Vec<(String, u16)> =
-        &serde_json::from_reader(File::open("model-trainer/champs.json").unwrap()).unwrap();
+    let champs: Vec<(String, u16)> =
+        serde_json::from_reader(File::open("model-trainer/champs.json").unwrap()).unwrap();
     let tot_champs = champs.len();
-    let champ_dict = map_champ_id_to_index(champs).unwrap();
+    let champ_dict = map_champ_id_to_index(&champs).unwrap();
     let model = tract_onnx::onnx()
         // load the model
         .model_for_path("./model-trainer/model.onnx")?
@@ -377,35 +377,3 @@ fn WinRateDisplay(cx: Scope<WinRateDisplayProps>) -> Element {
     let champ = cx.props.champ;
     cx.render(rsx!("{champ}: {win_rate} "))
 }
-
-/*
-
-if let Some(id) = summoner_id
-{
-let lobby_state_fut = use_future(&cx, &summoner_id,|_| async move {
-    Some(get_champ_select_state(request, summoner_id?).await)
-});
-
-let new_lobby_state = lobby_state_fut.value().and_then(|a| a.as_ref());
-let win_rate_display = match new_lobby_state {
-    Some(Ok(lobby_state)) => {
-        rsx!(ul {
-        lobby_state.choices().iter().map(|&choice| {
-            let team: [u16; 5] = [choice].into_iter().chain(lobby_state.team_champs.clone().into_iter()).collect::<Vec<_>>().try_into().unwrap();
-            let win_rate = get_win_rate(&team, champ_dict, model).unwrap();
-            rsx!("Win rate with {choice}: {win_rate}\n")
-        })})
-    },
-    Some(Err(e)) => rsx!("{e}"),
-    None => rsx!("Waiting for champ select"),
-};
-cx.render(rsx!(
-    button {
-        onclick: move |_| lobby_state_fut.restart(),
-        "Refresh Champ Select"
-    }
-    win_rate_display
-))}
-else {
-    cx.render(rsx!("kek"))
-}*/
