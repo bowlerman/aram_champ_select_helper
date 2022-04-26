@@ -25,7 +25,7 @@ impl Error for NonExistentMatchInDB {}
 
 #[tokio::main]
 async fn main() -> Result<Infallible, Box<dyn Error>> {
-    let client_options = ClientOptions::parse("mongodb://localhost:27017");
+    let client_options = ClientOptions::parse("mongodb://db:27017");
     let client = Client::with_options(client_options.await?)?;
     let db = &client.database("aram_champ_select_helper");
     let summoner_collection = &db.collection("summoners");
