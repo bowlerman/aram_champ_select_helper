@@ -17,7 +17,7 @@ match_data = db.matches
 
 
 lol_version = requests.get("https://ddragon.leagueoflegends.com/api/versions.json").json()[0]
-champ_data = requests.get("https://ddragon.leagueoflegends.com/cdn/" + lol_version + "/data/en_US/champion.json").json()["data"]
+champ_data = requests.get(f"https://ddragon.leagueoflegends.com/cdn/{lol_version}/data/en_US/champion.json").json()["data"]
 CHAMPS = [(champ, int(champ_data[champ]["key"])) for champ in champ_data]
 CHAMPS.sort(key=lambda x: x[1])
 NUM_CHAMPS = len(CHAMPS)
@@ -74,10 +74,10 @@ y = []
 for document in match_data.find({"game_start": {"$gt": time.time()-MAX_TIME}}):
     for team in ['blue', 'red']:
         team_comp = [0]*(NUM_CHAMPS+1)
-        for champ in document[team+"_champs"]:
+        for champ in document[f"{team}_champs"]:
             team_comp[champid_to_index(champ)] = 1
         x.append(team_comp)
-        if document['blue_win']:
+        if document[f'blue_win'] ^ (team != 'blue'):
             y.append([1, 0])
         else:
             y.append([0, 1])
@@ -123,7 +123,9 @@ for bound in bounds:
                     correct += 1
     if count:
         print("Model certainty:  {:.3}-{:.3}".format(bound, bound+bound_interval))
-        print("Sample size:  {}".format(count))
-        print("Correct guesses:  {}".format(correct))
+        print(f"Sample size:  {count}")
+        print(f"Correct guesses:  {correct}")
         print("Percentage correct:  {:.1%}".format(correct/count))
         print()
+
+print(f"Average prediction: {np.average([prediction[0] for prediction in predictions])}")

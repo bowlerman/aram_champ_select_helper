@@ -1,4 +1,4 @@
-version: '3'
+version: '3.8'
 
 services:
   data-collection:
@@ -6,11 +6,12 @@ services:
       context: /data-collection
       args:
         - RGAPI_KEY=${RGAPI_KEY}
-    environment:
-      RGAPI_KEY: ${RGAPI_KEY}
+#    environment:
+#      RGAPI_KEY: ${RGAPI_KEY}
   db:
     image: mongo:5.0
     ports:
       - "27017:27017"
     volumes:
       - ~/apps/mongo:/data/db
+    command: --quiet

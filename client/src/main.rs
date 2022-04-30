@@ -79,7 +79,7 @@ fn map_champ_id_to_index(
 #[cfg(feature = "simulator")]
 mod api_mock {
 
-    use std::{sync::{Arc, Mutex}, convert::Infallible, io::stdin};
+    use std::{sync::Mutex, convert::Infallible, io::stdin};
 
     use serde_json::{Value, json};
     use lazy_static::lazy_static;
@@ -132,8 +132,8 @@ mod api_mock {
     }
 
 
-    #[clap(global_setting(AppSettings::NoBinaryName))]
     #[derive(Parser, Debug)]
+    #[clap(global_setting(AppSettings::NoBinaryName))]
     struct Cli{
         #[clap(subcommand)]
         command: Commands
@@ -157,7 +157,7 @@ mod api_mock {
             let maybe_cli = Cli::try_parse_from(buffer.split_whitespace());
             let cli = match maybe_cli {
                 Ok(cli) => cli,
-                Err(err) => {err.print(); continue}
+                Err(err) => {err.print().unwrap(); continue}
             };
             let mut champ_select_state = CHAMP_SELECT_STATE.lock().unwrap();
             match cli.command {

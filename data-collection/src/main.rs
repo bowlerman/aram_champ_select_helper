@@ -15,7 +15,7 @@ impl Display for NonExistentMatchInDB {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
             f,
-            "match {} is in DB but does not exist in Riot DB",
+            "mafghtch {} is in DB but does not exist in Riot DB",
             self.match_id
         )
     }
