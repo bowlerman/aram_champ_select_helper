@@ -103,7 +103,7 @@ model.compile(optimizer='adam',
               loss='binary_crossentropy',
               metrics=['accuracy'])
 
-model.fit(x_train, y_train, epochs=10)
+model.fit(x_train, y_train, epochs=20)
 model.evaluate(x_test, y_test)
 predictions = model.predict(x_test)
 onnx_model = onnxmltools.convert_keras(model)

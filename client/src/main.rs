@@ -5,7 +5,7 @@ use std::{
     fs::File, path::Path,
 };
 
-use dioxus::prelude::*;
+use dioxus::{prelude::*, desktop::tao::dpi::LogicalSize};
 #[cfg(not(feature = "simulator"))]
 use league_client_connector::LeagueClientConnector;
 #[cfg(not(feature = "simulator"))]
@@ -297,7 +297,12 @@ fn get_model() -> Result<Model, Box<dyn Error>> {
 async fn main() {
     #[cfg(feature = "simulator")]
     tokio::spawn(simulator());
-    dioxus::desktop::launch(App);
+    dioxus::desktop::launch_cfg(App, |cfg| {
+        cfg.with_window(|w| {
+            w.with_title("ARAM champ select helper")
+            .with_inner_size(LogicalSize::new(620.0, 120.0))
+        })
+    });
 }
 
 async fn init_champ_select_fetcher() -> ChampSelectFetcher {
