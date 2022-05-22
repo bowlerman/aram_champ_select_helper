@@ -1,10 +1,11 @@
 use std::{
     collections::HashMap,
-    error::Error,
+    error,
     fmt::{Debug},
     fs::File, path::Path,
 };
 
+use async_trait::async_trait;
 use dioxus::{prelude::*, desktop::tao::dpi::LogicalSize};
 #[cfg(not(feature = "simulator"))]
 use league_client_connector::LeagueClientConnector;
@@ -13,6 +14,7 @@ use reqwest::{Client, RequestBuilder};
 use serde_json::{self, from_value, Value};
 use tokio::time::*;
 use tract_onnx::prelude::*;
+use anyhow::{Error, anyhow};
 
 type Champ = u16;
 
@@ -29,7 +31,7 @@ struct Model {
 }
 
 impl Model {
-    fn get_win_rate(&self, team: &[u16; 5]) -> Result<f32, Box<dyn Error>> {
+    fn get_win_rate(&self, team: &[u16; 5]) -> Result<f32, Error> {
         let tot_champs = self.champ_dict.len();
         let mut one_hot = vec![0_f32; tot_champs + 1];
         for champ in team {
@@ -68,7 +70,7 @@ fn test_choices() {
 
 fn map_champ_id_to_index(
     all_champs: &Vec<(String, u16)>,
-) -> Result<HashMap<u16, usize>, Box<dyn Error>> {
+) -> Result<HashMap<u16, usize>, Error> {
     let mut map = HashMap::new();
     for i in 0..all_champs.len() {
         map.insert(all_champs[i].1, i);
@@ -183,16 +185,18 @@ mod api_mock {
 #[cfg(feature = "simulator")]
 use api_mock::*;
 
+#[async_trait]
 trait RequestBuilderT: Sized {
-    fn make_lol_client_api_request(addr: &str) -> Result<Self, Box<dyn Error>>;
+    fn make_lol_client_api_request(addr: &str) -> Result<Self, anyhow::Error>;
 
-    fn make_lobby_request() -> Result<Self, Box<dyn Error>> {
+    fn make_lobby_request() -> Result<Self, anyhow::Error> {
         Self::make_lol_client_api_request("lol-champ-select/v1/session")
     }
 }
 
+#[async_trait]
 impl RequestBuilderT for RequestBuilder {
-    fn make_lol_client_api_request(addr: &str) -> Result<Self, Box<dyn Error>> {
+    fn make_lol_client_api_request(addr: &str) -> Result<Self, anyhow::Error> {
         #[cfg(feature = "simulator")]{ // During debug return mock for client api
             Ok(RequestBuilder{addr: addr.to_owned()})
         }
@@ -207,15 +211,15 @@ impl RequestBuilderT for RequestBuilder {
     }
 }
 
-async fn try_get_summoner_id() -> Result<u64, Box<dyn Error>> {
+async fn try_get_summoner_id() -> Result<u64, anyhow::Error> {
     let result: Value = RequestBuilder::make_lol_client_api_request("lol-summoner/v1/current-summoner")?.send().await?.json().await?;
     let summoner_id = result
         .as_object()
-        .ok_or("Expecting object with summoner info")?
+        .ok_or(anyhow!("Expecting object with summoner info"))?
         .get("summonerId")
-        .ok_or("Expecting summonerId field")?
+        .ok_or(anyhow!("Expecting summonerId field"))?
         .as_u64()
-        .ok_or("Expecting summoner Id")?;
+        .ok_or(anyhow!("Expecting summoner Id"))?;
     Ok(summoner_id)
 }
 
@@ -234,19 +238,15 @@ impl Clone for ChampSelectFetcher {
 impl ChampSelectFetcher {
     async fn get_champ_select_state(
         &self,
-    ) -> Result<ChampSelectState, Box<dyn Error>>
-    where
-        dyn Error: 'static,
-    {
-        let response = self.request.try_clone().ok_or("Could not clone champ select api request")?.send().await?;
+    ) -> Result<ChampSelectState, Error> {
+        let response = self.request.try_clone().ok_or(anyhow!("Could not clone champ select api request"))?.send().await?;
         let base_json: Value = response.json().await?;
         let json = base_json
             .as_object()
-            .ok_or("Expecting object at top level")?;
+            .ok_or(anyhow!("Expecting object at top level"))?;
         if let Some(v) = json.get("httpStatus")  {
             if let Value::Number(_) = v {
-                Err("Not in champ select")?;
-                unreachable!()
+                Err(anyhow!("Not in champ select"))?
             }
         }
         let bench = from_value(json["benchChampionIds"].clone())?;
@@ -254,15 +254,15 @@ impl ChampSelectFetcher {
         let mut your_champ = 0;
         for member_val in json["myTeam"]
             .as_array()
-            .ok_or("Expecting list of team members")?
+            .ok_or(anyhow!("Expecting list of team members"))?
         {
             let member = member_val
                 .as_object()
-                .ok_or("Expecting team member object")?;
+                .ok_or(anyhow!("Expecting team member object"))?;
             let champ_id = from_value(member["championId"].clone())?;
             if member["summonerId"]
                 .as_u64()
-                .ok_or("Expecting summoner Id of team member")?
+                .ok_or(anyhow!("Expecting summoner Id of team member"))?
                 == self.summoner_id
             {
                 your_champ = champ_id;
@@ -279,7 +279,7 @@ impl ChampSelectFetcher {
     }
 }
 
-fn get_model() -> Result<Model, Box<dyn Error>> {
+fn get_model() -> Result<Model, Error> {
     let champs: Vec<(String, u16)> =
         serde_json::from_reader(File::open("model-trainer/champs.json").unwrap()).unwrap();
     let tot_champs = champs.len();
