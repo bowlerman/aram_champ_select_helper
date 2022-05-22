@@ -350,12 +350,12 @@ fn App(cx: Scope) -> Element {
         Some(fetcher) => fetcher,
         None => return cx.render(rsx!("Waiting for lol client")),
     };
-    cx.render(rsx!(ChampSelect {fetcher: fetcher}))
+    cx.render(rsx!(ChampSelect {fetcher: fetcher.clone()}))
 }
 
 #[derive(Props)]
-struct ChampSelectProps<'a> {
-    fetcher: &'a ChampSelectFetcher<RequestBuilder>
+struct ChampSelectProps<Fetcher: ChampSelectFetcherT> {
+    fetcher: Fetcher
 }
 
 fn ok_ref<T, E>(res: &Result<T, E>) -> Option<&T> {
@@ -366,7 +366,7 @@ fn ok_ref<T, E>(res: &Result<T, E>) -> Option<&T> {
 }
 
 #[allow(non_snake_case)]
-fn ChampSelect<'a>(cx: Scope<'a, ChampSelectProps<'a>>) -> Element {
+fn ChampSelect(cx: Scope<ChampSelectProps<ChampSelectFetcher<RequestBuilder>>>) -> Element {
     let model = use_state(&cx, || get_model().unwrap()); //application is useless without valid model
     let model = model.current();
     let fetcher = cx.props.fetcher.clone();
