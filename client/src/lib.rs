@@ -1,6 +1,5 @@
 use std::{
     collections::HashMap,
-    error,
     fmt::{Debug},
     fs::File, path::Path,
 };
@@ -13,6 +12,7 @@ use serde_json::{self, from_value, Value};
 use tokio::time::*;
 use tract_onnx::prelude::*;
 use anyhow::{Error, anyhow};
+pub mod simulator;
 
 type Champ = u16;
 
@@ -78,60 +78,7 @@ fn map_champ_id_to_index(
 
 pub mod api_mock {
 
-    use std::{sync::Mutex, convert::Infallible, io::stdin};
 
-    use serde_json::{Value, json};
-    use lazy_static::lazy_static;
-    use super::{ChampSelectState, Champ, CHAMP_SELECT_STATE};
-    use clap::{Parser, Subcommand, AppSettings};
-
-    const SUMMONER_ID: u64 = 123;
-    #[derive(Parser, Debug)]
-    #[clap(global_setting(AppSettings::NoBinaryName))]
-    struct Cli{
-        #[clap(subcommand)]
-        command: Commands
-    }
-
-    #[derive(Subcommand, Debug)]
-    enum Commands{
-        AddBench {champ: Champ},
-        RmBench,
-        YourChamp {champ: Champ},
-        TeamChamps {pos: usize, champ: Champ},
-        Print,
-    }
-
-    use Commands::*;
-
-    pub async fn simulator() {
-        loop {
-            let mut buffer = String::new();
-            stdin().read_line(&mut buffer).unwrap();
-            let maybe_cli = Cli::try_parse_from(buffer.split_whitespace());
-            let cli = match maybe_cli {
-                Ok(cli) => cli,
-                Err(err) => {err.print().unwrap(); continue}
-            };
-            let mut champ_select_state = CHAMP_SELECT_STATE.lock().unwrap();
-            match cli.command {
-                AddBench{champ} => {
-                    champ_select_state.bench.push(champ)
-                },
-                RmBench => {
-                    champ_select_state.bench.pop();
-                },
-                YourChamp{champ} => {
-                    champ_select_state.your_champ = champ
-                },
-                TeamChamps{pos, champ} => {
-                    champ_select_state.team_champs[pos] = champ
-                },
-                Print => ()
-            }
-            println!("{champ_select_state:?}");
-        }
-    }
 }
 
 #[async_trait]
@@ -253,28 +200,6 @@ impl ChampSelectFetcher for RealChampSelectFetcher<RequestBuilder> {
     }
 }
 
-#[derive(Debug, Clone)]
-struct FakeChampSelectFetcher {}
-
-use lazy_static::lazy_static;
-use std::sync::Mutex;
-
-lazy_static! {
-    pub static ref CHAMP_SELECT_STATE: Mutex<ChampSelectState> = Mutex::new(Default::default());
-}
-
-#[cfg(feature = "simulator")]
-#[async_trait]
-impl ChampSelectFetcher for FakeChampSelectFetcher {
-    async fn get_champ_select_state(&self) -> Result<ChampSelectState, Error> {
-        Ok(CHAMP_SELECT_STATE.lock().unwrap().to_owned())
-    }
-
-    async fn new() -> Self {
-        FakeChampSelectFetcher {}
-    }
-}
-
 fn get_model() -> Result<Model, Error> {
     let champs: Vec<(String, u16)> =
         serde_json::from_reader(File::open("model-trainer/champs.json").unwrap()).unwrap();
@@ -308,7 +233,10 @@ pub fn start_app() {
 fn App(cx: Scope) -> Element {
     let champ_select_fetcher = use_future(&cx, (), |_| async {
         #[cfg(feature = "simulator")]
-        return FakeChampSelectFetcher::new().await;
+        {
+            use simulator::FakeChampSelectFetcher;
+            return FakeChampSelectFetcher::new().await;
+        }
         #[cfg(not(feature = "simulator"))]
         return RealChampSelectFetcher::new().await;
     }).value();
