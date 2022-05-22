@@ -183,26 +183,32 @@ mod api_mock {
 #[cfg(feature = "simulator")]
 use api_mock::*;
 
-fn make_lol_client_api_request(addr: &str) -> Result<RequestBuilder, Box<dyn Error>> {
-    #[cfg(feature = "simulator")]{ // During debug return mock for client api
-        Ok(RequestBuilder{addr: addr.to_owned()})
-    }
-    #[cfg(not(feature = "simulator"))]{
-        let lock_file = LeagueClientConnector::parse_lockfile()?;
-        let request = Client::builder().danger_accept_invalid_certs(true).build()?
-        .get(
-            format! {"{protocol}://{ip}:{port}/{addr}", ip = lock_file.address, port = lock_file.port, protocol = lock_file.protocol, addr = addr},
-        ).header("authorization", format!{"Basic {auth}", auth = lock_file.b64_auth});
-        Ok(request)
+trait RequestBuilderT: Sized {
+    fn make_lol_client_api_request(addr: &str) -> Result<Self, Box<dyn Error>>;
+
+    fn make_lobby_request() -> Result<Self, Box<dyn Error>> {
+        Self::make_lol_client_api_request("lol-champ-select/v1/session")
     }
 }
 
-fn make_lobby_request() -> Result<RequestBuilder, Box<dyn Error>> {
-    make_lol_client_api_request("lol-champ-select/v1/session")
+impl RequestBuilderT for RequestBuilder {
+    fn make_lol_client_api_request(addr: &str) -> Result<Self, Box<dyn Error>> {
+        #[cfg(feature = "simulator")]{ // During debug return mock for client api
+            Ok(RequestBuilder{addr: addr.to_owned()})
+        }
+        #[cfg(not(feature = "simulator"))]{
+            let lock_file = LeagueClientConnector::parse_lockfile()?;
+            let request = Client::builder().danger_accept_invalid_certs(true).build()?
+            .get(
+                format! {"{protocol}://{ip}:{port}/{addr}", ip = lock_file.address, port = lock_file.port, protocol = lock_file.protocol, addr = addr},
+            ).header("authorization", format!{"Basic {auth}", auth = lock_file.b64_auth});
+            Ok(request)
+        }
+    }
 }
 
 async fn try_get_summoner_id() -> Result<u64, Box<dyn Error>> {
-    let result: Value = make_lol_client_api_request("lol-summoner/v1/current-summoner")?.send().await?.json().await?;
+    let result: Value = RequestBuilder::make_lol_client_api_request("lol-summoner/v1/current-summoner")?.send().await?.json().await?;
     let summoner_id = result
         .as_object()
         .ok_or("Expecting object with summoner info")?
@@ -313,7 +319,7 @@ async fn init_champ_select_fetcher() -> ChampSelectFetcher {
         }
     };
     let request = loop {
-        if let Ok(req) = make_lobby_request() {
+        if let Ok(req) = RequestBuilder::make_lobby_request() {
             break req;
         }
         wait.tick().await;
