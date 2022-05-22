@@ -1,6 +1,7 @@
 use std::io::stdin;
 
-use super::{Champ, ChampSelectState, ChampSelectFetcher};
+use super::{Champ, ChampSelectState};
+use super::lol_client_api::ChampSelectFetcher;
 use clap::{Parser, Subcommand, AppSettings};
 use lazy_static::lazy_static;
 use std::sync::Mutex;
@@ -41,8 +42,6 @@ enum Commands{
     Print,
 }
 
-use Commands::*;
-
 pub async fn simulator() {
     loop {
         let mut buffer = String::new();
@@ -54,20 +53,19 @@ pub async fn simulator() {
         };
         let mut champ_select_state = CHAMP_SELECT_STATE.lock().unwrap();
         match cli.command {
-            AddBench{champ} => {
+            Commands::AddBench{champ} => {
                 champ_select_state.bench.push(champ)
             },
-            RmBench => {
+            Commands::RmBench => {
                 champ_select_state.bench.pop();
             },
-            YourChamp{champ} => {
+            Commands::YourChamp{champ} => {
                 champ_select_state.your_champ = champ
             },
-            TeamChamps{pos, champ} => {
+            Commands::TeamChamps{pos, champ} => {
                 champ_select_state.team_champs[pos] = champ
             },
-            Print => ()
+            Commands::Print => println!("{champ_select_state:?}")
         }
-        println!("{champ_select_state:?}");
     }
 }
