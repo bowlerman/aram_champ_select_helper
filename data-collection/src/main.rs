@@ -4,7 +4,7 @@ use riven::{consts::RegionalRoute, RiotApi};
 use std::{convert::Infallible, error::Error, fmt::Display};
 
 const SEED_SUMMONER: &str = "Rock Solid";
-const TIME_LIMIT: i64 = 60 * 60 * 24 * 7;
+const TIME_LIMIT: i64 = 60 * 60 * 24 * 7; // Get maches 1 week back in time
 
 #[derive(Debug, Clone)]
 struct NonExistentMatchInDB {
@@ -15,7 +15,7 @@ impl Display for NonExistentMatchInDB {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
             f,
-            "mafghtch {} is in DB but does not exist in Riot DB",
+            "match {} is in DB but does not exist in Riot DB",
             self.match_id
         )
     }
@@ -32,7 +32,7 @@ async fn main() -> Result<Infallible, Box<dyn Error>> {
     let match_collection = &db.collection("matches");
     init_collection_indices(db).await?;
     let mut riot_api = RiotApi::new(std::env!("RGAPI_KEY"));
-    insert_first_summoner(SEED_SUMMONER, summoner_collection, &mut riot_api).await?;
+    insert_first_summoner(SEED_SUMMONER, summoner_collection, &riot_api).await?;
     loop {
         let summoner_puuid = get_summoner_id(summoner_collection, TIME_LIMIT).await?;
         let match_ids = get_match_ids(summoner_puuid, TIME_LIMIT, &mut riot_api).await?;

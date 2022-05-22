@@ -23,11 +23,11 @@ trait RequestBuilderExt: Sized {
         let result: Value = Self::make_lol_client_api_request("lol-summoner/v1/current-summoner")?.get_json().await?;
         let summoner_id = result
             .as_object()
-            .ok_or(anyhow!("Expecting object with summoner info"))?
+            .ok_or_else(|| anyhow!("Expecting object with summoner info"))?
             .get("summonerId")
-            .ok_or(anyhow!("Expecting summonerId field"))?
+            .ok_or_else(|| anyhow!("Expecting summonerId field"))?
             .as_u64()
-            .ok_or(anyhow!("Expecting summoner Id"))?;
+            .ok_or_else(|| anyhow!("Expecting summoner Id"))?;
         Ok(summoner_id)
     }
 }
@@ -63,7 +63,7 @@ pub struct RealChampSelectFetcher<RequestBuilder> {
 
 impl Clone for RealChampSelectFetcher<RequestBuilder> {
     fn clone(&self) -> Self {
-        Self { request: self.request.try_clone().unwrap(), summoner_id: self.summoner_id.clone() }
+        Self { request: self.request.try_clone().unwrap(), summoner_id: self.summoner_id }
     }
 }
 
@@ -72,30 +72,28 @@ impl ChampSelectFetcher for RealChampSelectFetcher<RequestBuilder> {
     async fn get_champ_select_state(
         &self,
     ) -> Result<ChampSelectState, Error> {
-        let response = self.request.try_clone().ok_or(anyhow!("Could not clone champ select api request"))?.send().await?;
+        let response = self.request.try_clone().ok_or_else(|| anyhow!("Could not clone champ select api request"))?.send().await?;
         let base_json: Value = response.json().await?;
         let json = base_json
             .as_object()
-            .ok_or(anyhow!("Expecting object at top level"))?;
-        if let Some(v) = json.get("httpStatus")  {
-            if let Value::Number(_) = v {
-                Err(anyhow!("Not in champ select"))?
-            }
+            .ok_or_else(|| anyhow!("Expecting object at top level"))?;
+        if let Some(Value::Number(_)) = json.get("httpStatus") {
+            Err(anyhow!("Not in champ select"))?
         }
         let bench = from_value(json["benchChampionIds"].clone())?;
         let mut team_champs = Vec::new();
         let mut your_champ = 0;
         for member_val in json["myTeam"]
             .as_array()
-            .ok_or(anyhow!("Expecting list of team members"))?
+            .ok_or_else(|| anyhow!("Expecting list of team members"))?
         {
             let member = member_val
                 .as_object()
-                .ok_or(anyhow!("Expecting team member object"))?;
+                .ok_or_else(|| anyhow!("Expecting team member object"))?;
             let champ_id = from_value(member["championId"].clone())?;
             if member["summonerId"]
                 .as_u64()
-                .ok_or(anyhow!("Expecting summoner Id of team member"))?
+                .ok_or_else(|| anyhow!("Expecting summoner Id of team member"))?
                 == self.summoner_id
             {
                 your_champ = champ_id;

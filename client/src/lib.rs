@@ -1,12 +1,11 @@
 use std::{
     collections::HashMap,
-    fmt::{Debug},
+    fmt::Debug,
     fs::File, path::Path,
 };
 
 use dioxus::{prelude::*, desktop::tao::dpi::LogicalSize};
 use lol_client_api::{ChampSelectFetcher, RealChampSelectFetcher};
-use serde_json;
 use tokio::time::*;
 use tract_onnx::prelude::*;
 use anyhow::Error;
@@ -23,8 +22,10 @@ pub struct ChampSelectState {
     team_champs: [Champ; 4],
 }
 
+type OnnxModel = SimplePlan<TypedFact, Box<dyn TypedOp>, Graph<TypedFact, Box<dyn TypedOp>>>;
+
 struct Model {
-    model: SimplePlan<TypedFact, Box<dyn TypedOp>, Graph<TypedFact, Box<dyn TypedOp>>>,
+    model: OnnxModel,
     champ_dict: HashMap<u16, usize>,
 }
 
@@ -67,11 +68,11 @@ fn test_choices() {
 }
 
 fn map_champ_id_to_index(
-    all_champs: &Vec<(String, u16)>,
+    all_champs: &[(String, u16)],
 ) -> Result<HashMap<u16, usize>, Error> {
     let mut map = HashMap::new();
-    for i in 0..all_champs.len() {
-        map.insert(all_champs[i].1, i);
+    for (i, &(_, champ_id)) in all_champs.iter().enumerate() {
+        map.insert(champ_id, i);
     }
     Ok(map)
 }

@@ -1,6 +1,5 @@
 use std::fs::File;
 use std::path::Path;
-use serde_json;
 
 fn main() {
     let champs: Vec<(String, u16)> =
@@ -14,7 +13,7 @@ fn main() {
             }
         }
     }
-    if !Path::new(&format!{"champ_icons/generic.png"}).exists() {
+    if !Path::new("champ_icons/generic.png").exists() {
         let mut resp = reqwest::blocking::get("https://cdn.communitydragon.org/latest/champion/generic/square").unwrap();
         if resp.status().is_success() {
             let mut file = File::create("champ_icons/generic.png").unwrap();
