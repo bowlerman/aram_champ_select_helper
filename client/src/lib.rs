@@ -234,6 +234,8 @@ impl RequestBuilderT for RequestBuilder {
 #[async_trait]
 trait ChampSelectFetcherT {
     async fn get_champ_select_state(&self) -> Result<ChampSelectState, Error>;
+
+    async fn new() -> Self;
 }
 
 #[derive(Debug)]
@@ -291,6 +293,22 @@ impl ChampSelectFetcherT for ChampSelectFetcher<RequestBuilder> {
             team_champs,
         })
     }
+
+    async fn new() -> ChampSelectFetcher<RequestBuilder> {
+        let mut wait = interval(Duration::from_millis(1000));
+        let summoner_id = loop {
+            if let (Ok(summoner_id), _) = tokio::join!(RequestBuilder::try_get_summoner_id(), wait.tick()) {
+                break summoner_id;
+            }
+        };
+        let request = loop {
+            if let Ok(req) = RequestBuilder::make_lobby_request() {
+                break req;
+            }
+            wait.tick().await;
+        };
+        ChampSelectFetcher{request, summoner_id}
+    }
 }
 
 fn get_model() -> Result<Model, Error> {
@@ -322,26 +340,10 @@ pub fn start_app() {
     });
 }
 
-async fn init_champ_select_fetcher() -> ChampSelectFetcher<RequestBuilder> {
-    let mut wait = interval(Duration::from_millis(1000));
-    let summoner_id = loop {
-        if let (Ok(summoner_id), _) = tokio::join!(RequestBuilder::try_get_summoner_id(), wait.tick()) {
-            break summoner_id;
-        }
-    };
-    let request = loop {
-        if let Ok(req) = RequestBuilder::make_lobby_request() {
-            break req;
-        }
-        wait.tick().await;
-    };
-    ChampSelectFetcher{request, summoner_id}
-}
-
 #[allow(non_snake_case)]
 fn App(cx: Scope) -> Element {
     let champ_select_fetcher = use_future(&cx, (), |_| async {
-        init_champ_select_fetcher().await
+        ChampSelectFetcher::new().await
     }).value();
     let fetcher = match champ_select_fetcher
     {
