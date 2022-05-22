@@ -7,9 +7,7 @@ use std::{
 
 use async_trait::async_trait;
 use dioxus::{prelude::*, desktop::tao::dpi::LogicalSize};
-#[cfg(not(feature = "simulator"))]
 use league_client_connector::LeagueClientConnector;
-#[cfg(not(feature = "simulator"))]
 use reqwest::{Client, RequestBuilder};
 use serde_json::{self, from_value, Value};
 use tokio::time::*;
@@ -19,7 +17,7 @@ use anyhow::{Error, anyhow};
 type Champ = u16;
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
-struct ChampSelectState {
+pub struct ChampSelectState {
     your_champ: Champ,
     bench: Vec<Champ>,
     team_champs: [Champ; 4],
@@ -78,62 +76,16 @@ fn map_champ_id_to_index(
     Ok(map)
 }
 
-#[cfg(feature = "simulator")]
 pub mod api_mock {
 
     use std::{sync::Mutex, convert::Infallible, io::stdin};
 
     use serde_json::{Value, json};
     use lazy_static::lazy_static;
-    use super::{ChampSelectState, Champ};
+    use super::{ChampSelectState, Champ, CHAMP_SELECT_STATE};
     use clap::{Parser, Subcommand, AppSettings};
 
-    lazy_static! {
-        static ref CHAMP_SELECT_STATE: Mutex<ChampSelectState> = Mutex::new(Default::default());
-    }
     const SUMMONER_ID: u64 = 123;
-    #[derive(Debug, Clone)]
-    pub struct RequestBuilder {pub addr: String}
-
-    pub struct Response {response: Value}
-
-    impl RequestBuilder {
-        pub async fn send(self) -> Result<Response, reqwest::Error> {
-            let response = match self.addr.as_str() {
-                "lol-champ-select/v1/session" => {
-                    let champ_select_state = CHAMP_SELECT_STATE.lock().unwrap();
-                    let mut team_champs: Vec<Value> = champ_select_state.team_champs.iter().map(|champ| json!({
-                        "championId": champ,
-                        "summonerId": SUMMONER_ID + 1
-                    })).collect();
-                    team_champs.push(json!({
-                        "championId": champ_select_state.your_champ,
-                        "summonerId": SUMMONER_ID
-                    }));
-                    json!(
-                    {
-                        "benchChampionIds": champ_select_state.bench,
-                        "myTeam": team_champs
-                    }
-                )},
-                "lol-summoner/v1/current-summoner" => json!({"summonerId": SUMMONER_ID}),
-                _ => unimplemented!()
-            };
-            return Ok(Response{response})
-        }
-
-        pub fn try_clone(&self) -> Option<RequestBuilder> {
-            Some(self.clone())
-        }
-    }
-
-    impl Response {
-        pub async fn json(&self) -> Result<Value, Infallible> {
-            return Ok(self.response.clone())
-        }
-    }
-
-
     #[derive(Parser, Debug)]
     #[clap(global_setting(AppSettings::NoBinaryName))]
     struct Cli{
@@ -182,11 +134,6 @@ pub mod api_mock {
     }
 }
 
-#[cfg(feature = "simulator")]
-use api_mock::*;
-#[cfg(not(feature = "simulator"))]
-use reqwest::Response;
-
 #[async_trait]
 trait RequestBuilderT: Sized {
     fn make_lol_client_api_request(addr: &str) -> Result<Self, anyhow::Error>;
@@ -213,17 +160,12 @@ trait RequestBuilderT: Sized {
 #[async_trait]
 impl RequestBuilderT for RequestBuilder {
     fn make_lol_client_api_request(addr: &str) -> Result<Self, anyhow::Error> {
-        #[cfg(feature = "simulator")]{ // During debug return mock for client api
-            Ok(RequestBuilder{addr: addr.to_owned()})
-        }
-        #[cfg(not(feature = "simulator"))]{
-            let lock_file = LeagueClientConnector::parse_lockfile()?;
-            let request = Client::builder().danger_accept_invalid_certs(true).build()?
-            .get(
-                format! {"{protocol}://{ip}:{port}/{addr}", ip = lock_file.address, port = lock_file.port, protocol = lock_file.protocol, addr = addr},
-            ).header("authorization", format!{"Basic {auth}", auth = lock_file.b64_auth});
-            Ok(request)
-        }
+        let lock_file = LeagueClientConnector::parse_lockfile()?;
+        let request = Client::builder().danger_accept_invalid_certs(true).build()?
+        .get(
+            format! {"{protocol}://{ip}:{port}/{addr}", ip = lock_file.address, port = lock_file.port, protocol = lock_file.protocol, addr = addr},
+        ).header("authorization", format!{"Basic {auth}", auth = lock_file.b64_auth});
+        Ok(request)
     }
 
     async fn get_json(self) -> Result<Value, anyhow::Error> {
@@ -232,26 +174,26 @@ impl RequestBuilderT for RequestBuilder {
 }
 
 #[async_trait]
-trait ChampSelectFetcherT {
+trait ChampSelectFetcher {
     async fn get_champ_select_state(&self) -> Result<ChampSelectState, Error>;
 
     async fn new() -> Self;
 }
 
 #[derive(Debug)]
-struct ChampSelectFetcher<R: RequestBuilderT> {
+struct RealChampSelectFetcher<R: RequestBuilderT> {
     request: R,
     summoner_id: u64
 }
 
-impl Clone for ChampSelectFetcher<RequestBuilder> {
+impl Clone for RealChampSelectFetcher<RequestBuilder> {
     fn clone(&self) -> Self {
         Self { request: self.request.try_clone().unwrap(), summoner_id: self.summoner_id.clone() }
     }
 }
 
 #[async_trait]
-impl ChampSelectFetcherT for ChampSelectFetcher<RequestBuilder> {
+impl ChampSelectFetcher for RealChampSelectFetcher<RequestBuilder> {
     async fn get_champ_select_state(
         &self,
     ) -> Result<ChampSelectState, Error> {
@@ -294,7 +236,7 @@ impl ChampSelectFetcherT for ChampSelectFetcher<RequestBuilder> {
         })
     }
 
-    async fn new() -> ChampSelectFetcher<RequestBuilder> {
+    async fn new() -> Self {
         let mut wait = interval(Duration::from_millis(1000));
         let summoner_id = loop {
             if let (Ok(summoner_id), _) = tokio::join!(RequestBuilder::try_get_summoner_id(), wait.tick()) {
@@ -307,7 +249,29 @@ impl ChampSelectFetcherT for ChampSelectFetcher<RequestBuilder> {
             }
             wait.tick().await;
         };
-        ChampSelectFetcher{request, summoner_id}
+        Self{request, summoner_id}
+    }
+}
+
+#[derive(Debug, Clone)]
+struct FakeChampSelectFetcher {}
+
+use lazy_static::lazy_static;
+use std::sync::Mutex;
+
+lazy_static! {
+    pub static ref CHAMP_SELECT_STATE: Mutex<ChampSelectState> = Mutex::new(Default::default());
+}
+
+#[cfg(feature = "simulator")]
+#[async_trait]
+impl ChampSelectFetcher for FakeChampSelectFetcher {
+    async fn get_champ_select_state(&self) -> Result<ChampSelectState, Error> {
+        Ok(CHAMP_SELECT_STATE.lock().unwrap().to_owned())
+    }
+
+    async fn new() -> Self {
+        FakeChampSelectFetcher {}
     }
 }
 
@@ -343,7 +307,10 @@ pub fn start_app() {
 #[allow(non_snake_case)]
 fn App(cx: Scope) -> Element {
     let champ_select_fetcher = use_future(&cx, (), |_| async {
-        ChampSelectFetcher::new().await
+        #[cfg(feature = "simulator")]
+        return FakeChampSelectFetcher::new().await;
+        #[cfg(not(feature = "simulator"))]
+        return RealChampSelectFetcher::new().await;
     }).value();
     let fetcher = match champ_select_fetcher
     {
@@ -354,7 +321,7 @@ fn App(cx: Scope) -> Element {
 }
 
 #[derive(Props)]
-struct ChampSelectProps<Fetcher: ChampSelectFetcherT> {
+struct ChampSelectProps<Fetcher: ChampSelectFetcher> {
     fetcher: Fetcher
 }
 
@@ -366,7 +333,7 @@ fn ok_ref<T, E>(res: &Result<T, E>) -> Option<&T> {
 }
 
 #[allow(non_snake_case)]
-fn ChampSelect(cx: Scope<ChampSelectProps<ChampSelectFetcher<RequestBuilder>>>) -> Element {
+fn ChampSelect<Fetcher: ChampSelectFetcher + Clone + 'static>(cx: Scope<ChampSelectProps<Fetcher>>) -> Element {
     let model = use_state(&cx, || get_model().unwrap()); //application is useless without valid model
     let model = model.current();
     let fetcher = cx.props.fetcher.clone();
