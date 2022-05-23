@@ -56,19 +56,19 @@ pub trait ChampSelectFetcher {
 }
 
 #[derive(Debug)]
-pub struct RealChampSelectFetcher<RequestBuilder> {
+pub struct RealChampSelectFetcher {
     request: RequestBuilder,
     summoner_id: u64
 }
 
-impl Clone for RealChampSelectFetcher<RequestBuilder> {
+impl Clone for RealChampSelectFetcher {
     fn clone(&self) -> Self {
         Self { request: self.request.try_clone().unwrap(), summoner_id: self.summoner_id }
     }
 }
 
 #[async_trait]
-impl ChampSelectFetcher for RealChampSelectFetcher<RequestBuilder> {
+impl ChampSelectFetcher for RealChampSelectFetcher {
     async fn get_champ_select_state(
         &self,
     ) -> Result<ChampSelectState, Error> {

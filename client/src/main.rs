@@ -1,10 +1,6 @@
-use client::start_app;
-#[cfg(feature = "simulator")]
-use client::simulator::simulator;
+use client::{start_app, lol_client_api::RealChampSelectFetcher};
 
 #[tokio::main]
 async fn main() {
-    #[cfg(feature = "simulator")]
-    tokio::spawn(simulator());
-    start_app();
+    start_app::<RealChampSelectFetcher>();
 }

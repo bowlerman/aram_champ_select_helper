@@ -28,7 +28,4 @@ path = "src/main.rs"
 
 [[bin]]
 name = "test-client"
-path = "manual-tests/simulator.rs"
-
-[features]
-simulator = []
+path = "manual-tests/test-client.rs"

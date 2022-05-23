@@ -1,6 +1,7 @@
 use std::fs::File;
 use std::path::Path;
 
+/// Downloads all the champion icons for use in the app
 fn main() {
     let champs: Vec<(String, u16)> =
     serde_json::from_reader(File::open("../model-trainer/champs.json").unwrap()).unwrap();

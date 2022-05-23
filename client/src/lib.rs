@@ -10,7 +10,7 @@ use tokio::time::*;
 use tract_onnx::prelude::*;
 use anyhow::Error;
 pub mod simulator;
-mod lol_client_api;
+pub mod lol_client_api;
 mod models;
 
 type Champ = u16;
@@ -97,8 +97,8 @@ fn get_model() -> Result<Model, Error> {
     Ok(Model { model, champ_dict })
 }
 
-pub fn start_app() {
-    dioxus::desktop::launch_cfg(App, |cfg| {
+pub fn start_app<Fetcher: ChampSelectFetcher + Clone + 'static>() {
+    dioxus::desktop::launch_cfg(App::<Fetcher>, |cfg| {
         cfg.with_window(|w| {
             w.with_title("ARAM champ select helper")
             .with_inner_size(LogicalSize::new(620.0, 120.0))
@@ -107,22 +107,17 @@ pub fn start_app() {
 }
 
 #[allow(non_snake_case)]
-fn App(cx: Scope) -> Element {
+fn App<Fetcher: ChampSelectFetcher + Clone + 'static>(cx: Scope) -> Element {
+    {
     let champ_select_fetcher = use_future(&cx, (), |_| async {
-        #[cfg(feature = "simulator")]
-        {
-            use simulator::FakeChampSelectFetcher;
-            return FakeChampSelectFetcher::new().await;
-        }
-        #[cfg(not(feature = "simulator"))]
-        return RealChampSelectFetcher::new().await;
+        return Fetcher::new().await;
     }).value();
     let fetcher = match champ_select_fetcher
     {
         Some(fetcher) => fetcher,
         None => return cx.render(rsx!("Waiting for lol client")),
     };
-    cx.render(rsx!(ChampSelect {fetcher: fetcher.clone()}))
+    cx.render(rsx!(ChampSelect {fetcher: fetcher.clone()}))}
 }
 
 #[derive(Props)]
