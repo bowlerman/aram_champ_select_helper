@@ -1,5 +1,5 @@
-use std::{collections::HashMap, fs::File};
 use anyhow::Error;
+use std::{collections::HashMap, fs::File};
 use tract_onnx::prelude::*;
 
 type OnnxModel = SimplePlan<TypedFact, Box<dyn TypedOp>, Graph<TypedFact, Box<dyn TypedOp>>>;
@@ -49,11 +49,7 @@ impl ARAMModel {
     }
 }
 
-
-
-fn map_champ_id_to_index(
-    all_champs: &[(String, u16)],
-) -> Result<HashMap<u16, usize>, Error> {
+fn map_champ_id_to_index(all_champs: &[(String, u16)]) -> Result<HashMap<u16, usize>, Error> {
     let mut map = HashMap::new();
     for (i, &(_, champ_id)) in all_champs.iter().enumerate() {
         map.insert(champ_id, i);

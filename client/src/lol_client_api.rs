@@ -1,10 +1,10 @@
 use std::time::Duration;
 
-use async_trait::async_trait;
-use serde_json::{Value, from_value};
 use anyhow::{anyhow, Error};
-use reqwest::{RequestBuilder, Client};
+use async_trait::async_trait;
 use league_client_connector::LeagueClientConnector;
+use reqwest::{Client, RequestBuilder};
+use serde_json::{from_value, Value};
 use tokio::time::interval;
 
 use crate::ChampSelectState;
@@ -20,7 +20,9 @@ trait RequestBuilderExt: Sized {
     }
 
     async fn try_get_summoner_id() -> Result<u64, anyhow::Error> {
-        let result: Value = Self::make_lol_client_api_request("lol-summoner/v1/current-summoner")?.get_json().await?;
+        let result: Value = Self::make_lol_client_api_request("lol-summoner/v1/current-summoner")?
+            .get_json()
+            .await?;
         let summoner_id = result
             .as_object()
             .ok_or_else(|| anyhow!("Expecting object with summoner info"))?
@@ -58,21 +60,27 @@ pub trait ChampSelectFetcher {
 #[derive(Debug)]
 pub struct RealChampSelectFetcher {
     request: RequestBuilder,
-    summoner_id: u64
+    summoner_id: u64,
 }
 
 impl Clone for RealChampSelectFetcher {
     fn clone(&self) -> Self {
-        Self { request: self.request.try_clone().unwrap(), summoner_id: self.summoner_id }
+        Self {
+            request: self.request.try_clone().unwrap(),
+            summoner_id: self.summoner_id,
+        }
     }
 }
 
 #[async_trait]
 impl ChampSelectFetcher for RealChampSelectFetcher {
-    async fn get_champ_select_state(
-        &self,
-    ) -> Result<ChampSelectState, Error> {
-        let response = self.request.try_clone().ok_or_else(|| anyhow!("Could not clone champ select api request"))?.send().await?;
+    async fn get_champ_select_state(&self) -> Result<ChampSelectState, Error> {
+        let response = self
+            .request
+            .try_clone()
+            .ok_or_else(|| anyhow!("Could not clone champ select api request"))?
+            .send()
+            .await?;
         let base_json: Value = response.json().await?;
         let json = base_json
             .as_object()
@@ -112,7 +120,9 @@ impl ChampSelectFetcher for RealChampSelectFetcher {
     async fn new() -> Self {
         let mut wait = interval(Duration::from_millis(1000));
         let summoner_id = loop {
-            if let (Ok(summoner_id), _) = tokio::join!(RequestBuilder::try_get_summoner_id(), wait.tick()) {
+            if let (Ok(summoner_id), _) =
+                tokio::join!(RequestBuilder::try_get_summoner_id(), wait.tick())
+            {
                 break summoner_id;
             }
         };
@@ -122,6 +132,9 @@ impl ChampSelectFetcher for RealChampSelectFetcher {
             }
             wait.tick().await;
         };
-        Self{request, summoner_id}
+        Self {
+            request,
+            summoner_id,
+        }
     }
 }

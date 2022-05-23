@@ -1,4 +1,7 @@
-use client::{simulator::{simulator, FakeChampSelectFetcher}, start_app};
+use client::{
+    simulator::{simulator, FakeChampSelectFetcher},
+    start_app,
+};
 
 #[tokio::main]
 async fn main() {

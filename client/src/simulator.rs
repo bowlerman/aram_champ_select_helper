@@ -1,18 +1,18 @@
 use std::io::stdin;
 
-use super::{Champ, ChampSelectState};
 use super::lol_client_api::ChampSelectFetcher;
-use clap::{Parser, Subcommand, AppSettings};
+use super::{Champ, ChampSelectState};
+use anyhow::Error;
+use async_trait::async_trait;
+use clap::{AppSettings, Parser, Subcommand};
 use lazy_static::lazy_static;
 use std::sync::Mutex;
-use async_trait::async_trait;
-use anyhow::Error;
 
 #[derive(Parser, Debug)]
 #[clap(global_setting(AppSettings::NoBinaryName))]
-struct Cli{
+struct Cli {
     #[clap(subcommand)]
-    command: Commands
+    command: Commands,
 }
 
 lazy_static! {
@@ -34,11 +34,11 @@ impl ChampSelectFetcher for FakeChampSelectFetcher {
 }
 
 #[derive(Subcommand, Debug)]
-enum Commands{
-    AddBench {champ: Champ},
+enum Commands {
+    AddBench { champ: Champ },
     RmBench,
-    YourChamp {champ: Champ},
-    TeamChamps {pos: usize, champ: Champ},
+    YourChamp { champ: Champ },
+    TeamChamps { pos: usize, champ: Champ },
     Print,
 }
 
@@ -49,23 +49,20 @@ pub async fn simulator() {
         let maybe_cli = Cli::try_parse_from(buffer.split_whitespace());
         let cli = match maybe_cli {
             Ok(cli) => cli,
-            Err(err) => {err.print().unwrap(); continue}
+            Err(err) => {
+                err.print().unwrap();
+                continue;
+            }
         };
         let mut champ_select_state = CHAMP_SELECT_STATE.lock().unwrap();
         match cli.command {
-            Commands::AddBench{champ} => {
-                champ_select_state.bench.push(champ)
-            },
+            Commands::AddBench { champ } => champ_select_state.bench.push(champ),
             Commands::RmBench => {
                 champ_select_state.bench.pop();
-            },
-            Commands::YourChamp{champ} => {
-                champ_select_state.your_champ = champ
-            },
-            Commands::TeamChamps{pos, champ} => {
-                champ_select_state.team_champs[pos] = champ
-            },
-            Commands::Print => println!("{champ_select_state:?}")
+            }
+            Commands::YourChamp { champ } => champ_select_state.your_champ = champ,
+            Commands::TeamChamps { pos, champ } => champ_select_state.team_champs[pos] = champ,
+            Commands::Print => println!("{champ_select_state:?}"),
         }
     }
 }
