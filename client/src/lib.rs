@@ -1,8 +1,9 @@
 use std::{fmt::Debug, path::Path};
 
+use anyhow::Error;
 use dioxus::{desktop::tao::dpi::LogicalSize, prelude::*};
 use lol_client_api::ChampSelectFetcher;
-use models::aram::ARAMModel;
+use models::aram::ARAMAIModel;
 use tokio::time::*;
 pub mod lol_client_api;
 mod models;
@@ -11,13 +12,13 @@ pub mod simulator;
 type Champ = u16;
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
-pub struct ChampSelectState {
+pub struct ARAMChampSelectState {
     your_champ: Champ,
     bench: Vec<Champ>,
     team_champs: [Champ; 4],
 }
 
-impl ChampSelectState {
+impl ARAMChampSelectState {
     fn choices(&self) -> Vec<u16> {
         let mut ret = vec![self.your_champ];
         ret.extend(&self.bench);
@@ -25,9 +26,35 @@ impl ChampSelectState {
     }
 }
 
+trait Dilemma {
+    type Choice;
+
+    fn choices(&self) -> Vec<Self::Choice>;
+
+    fn eval(&self, choice: &Self::Choice) -> Result<f32, Error>;
+
+    fn repr_choice(&'_ self, choice: &Self::Choice) -> LazyNodes;
+
+    fn repr_choice_with_win(&'_ self, choice: &Self::Choice) -> LazyNodes {
+        if let Ok(win_rate) = self.eval(choice) {
+            let c = self.repr_choice(choice);
+            rsx!("{win_rate}" c)
+        }
+        else {
+            rsx!("")
+        }
+    }
+
+    fn repr_choices_with_win(&'_ self) -> LazyNodes {
+        rsx!(
+            self.choices().iter().map(|choice| self.repr_choice_with_win(choice))
+        )
+    }
+}
+
 #[test]
 fn test_choices() {
-    let cs = ChampSelectState {
+    let cs = ARAMChampSelectState {
         your_champ: 12,
         bench: vec![1, 51, 124, 12, 53],
         team_champs: [123, 12, 3, 1],
@@ -77,10 +104,8 @@ fn ok_ref<T, E>(res: &Result<T, E>) -> Option<&T> {
 fn ChampSelect<Fetcher: ChampSelectFetcher + Clone + 'static>(
     cx: Scope<ChampSelectProps<Fetcher>>,
 ) -> Element {
-    let model = use_state(&cx, || ARAMModel::new().unwrap()); //application is useless without valid model
-    let model = model.current();
     let fetcher = cx.props.fetcher.clone();
-    let champ_select_state_handle: &UseState<Option<ChampSelectState>> = use_state(&cx, || None);
+    let champ_select_state_handle: &UseState<Option<ARAMChampSelectState>> = use_state(&cx, || None);
     let champ_select_state_store = champ_select_state_handle.clone();
     use_coroutine::<(), _, _>(&cx, |_| async move {
         let mut wait = interval(Duration::from_millis(1000));
@@ -94,6 +119,8 @@ fn ChampSelect<Fetcher: ChampSelectFetcher + Clone + 'static>(
             }
         }
     });
+    let model = use_state(&cx, || ARAMAIModel::new().unwrap()); //application is useless without valid model
+    let model = model.current();
     let state = champ_select_state_handle.current().as_ref().clone();
     match state {
         None => cx.render(rsx!("Waiting for champ select")),
@@ -117,7 +144,7 @@ fn ChampSelect<Fetcher: ChampSelectFetcher + Clone + 'static>(
                     ))
                 });
             let win_rate_displays = win_rates.map(|(choice, win_rate)| {
-                rsx!(WinRateDisplay {
+                rsx!(ARAMWinRateDisplay {
                     champ: choice,
                     win_rate: win_rate
                 })
@@ -132,19 +159,30 @@ fn ChampSelect<Fetcher: ChampSelectFetcher + Clone + 'static>(
 }
 
 #[derive(Props, PartialEq)]
-struct WinRateDisplayProps {
+struct ARAMWinRateDisplayProps {
     champ: Champ,
     win_rate: f32,
 }
 
+#[derive(Props, PartialEq)]
+struct ChampDisplayProps {
+    champ: Champ
+}
+
 #[allow(non_snake_case)]
-fn WinRateDisplay(cx: Scope<WinRateDisplayProps>) -> Element {
-    let win_rate = cx.props.win_rate * 100_f32;
+fn ChampDisplay(cx: Scope<ChampDisplayProps>) -> Element {
     let champ = cx.props.champ;
     let image_path = if Path::new(&format!("client/champ_icons/{champ}.png")).exists() {
         format!("client/champ_icons/{champ}.png")
     } else {
         "client/champ_icons/generic.png".to_owned()
     };
-    cx.render(rsx!(div {display: "flex", flex_direction: "column", img {src: "{image_path}", width: "60", height: "60"}, "{win_rate:.1} %"}))
+    cx.render(rsx!(img {src: "{image_path}", width: "60", height: "60"}))
+}
+
+#[allow(non_snake_case)]
+fn ARAMWinRateDisplay(cx: Scope<ARAMWinRateDisplayProps>) -> Element {
+    let win_rate = cx.props.win_rate * 100_f32;
+    let champ = cx.props.champ;
+    cx.render(rsx!(div {display: "flex", flex_direction: "column", ChampDisplay{ champ: champ }, "{win_rate:.1} %"}))
 }

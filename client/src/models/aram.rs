@@ -1,15 +1,18 @@
 use anyhow::Error;
+use dioxus::prelude::*;
 use std::{collections::HashMap, fs::File};
 use tract_onnx::prelude::*;
 
+use crate::{ARAMChampSelectState, Dilemma, Champ};
+
 type OnnxModel = SimplePlan<TypedFact, Box<dyn TypedOp>, Graph<TypedFact, Box<dyn TypedOp>>>;
 
-pub struct ARAMModel {
+pub struct ARAMAIModel {
     model: OnnxModel,
     champ_dict: HashMap<u16, usize>,
 }
 
-impl ARAMModel {
+impl ARAMAIModel {
     pub fn get_win_rate(&self, team: &[u16; 5]) -> Result<f32, Error> {
         let tot_champs = self.champ_dict.len();
         let mut one_hot = vec![0_f32; tot_champs + 1];
@@ -28,7 +31,7 @@ impl ARAMModel {
         Ok(res[0] / sum)
     }
 
-    pub fn new() -> Result<ARAMModel, Error> {
+    pub fn new() -> Result<ARAMAIModel, Error> {
         let champs: Vec<(String, u16)> =
             serde_json::from_reader(File::open("model-trainer/champs.json").unwrap()).unwrap();
         let tot_champs = champs.len();
@@ -45,7 +48,7 @@ impl ARAMModel {
             .into_optimized()?
             // make the model runnable and fix its inputs and outputs
             .into_runnable()?;
-        Ok(ARAMModel { model, champ_dict })
+        Ok(ARAMAIModel { model, champ_dict })
     }
 }
 
@@ -56,3 +59,23 @@ fn map_champ_id_to_index(all_champs: &[(String, u16)]) -> Result<HashMap<u16, us
     }
     Ok(map)
 }
+
+struct ARAMDilemma {
+    model: ARAMAIModel,
+    state: ARAMChampSelectState,
+}
+/*
+impl Dilemma for ARAMDilemma {
+    type Choice = Champ;
+    fn choices(&self) -> Vec<u16> {
+        self.state.choices()
+    }
+
+    fn eval(&self, &choice: &Self::Choice) -> Result<f32, Error> {
+        self.model.get_win_rate(&[choice, self.state.bench[0], self.state.bench[1], self.state.bench[2], self.state.bench[3]])
+    }
+
+    fn repr_choice(&'_ self, &choice: &Self::Choice) -> LazyNodes {
+        rsx!(choice)
+    }
+}*/

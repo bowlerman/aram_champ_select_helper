@@ -7,7 +7,7 @@ use reqwest::{Client, RequestBuilder};
 use serde_json::{from_value, Value};
 use tokio::time::interval;
 
-use crate::ChampSelectState;
+use crate::ARAMChampSelectState;
 
 #[async_trait]
 trait RequestBuilderExt: Sized {
@@ -52,7 +52,7 @@ impl RequestBuilderExt for RequestBuilder {
 
 #[async_trait]
 pub trait ChampSelectFetcher {
-    async fn get_champ_select_state(&self) -> Result<ChampSelectState, Error>;
+    async fn get_champ_select_state(&self) -> Result<ARAMChampSelectState, Error>;
 
     async fn new() -> Self;
 }
@@ -74,7 +74,7 @@ impl Clone for RealChampSelectFetcher {
 
 #[async_trait]
 impl ChampSelectFetcher for RealChampSelectFetcher {
-    async fn get_champ_select_state(&self) -> Result<ChampSelectState, Error> {
+    async fn get_champ_select_state(&self) -> Result<ARAMChampSelectState, Error> {
         let response = self
             .request
             .try_clone()
@@ -110,7 +110,7 @@ impl ChampSelectFetcher for RealChampSelectFetcher {
             }
         }
         let team_champs = team_champs.as_slice().try_into()?;
-        Ok(ChampSelectState {
+        Ok(ARAMChampSelectState {
             your_champ,
             bench,
             team_champs,

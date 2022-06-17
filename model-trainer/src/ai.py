@@ -2,13 +2,8 @@ import tensorflow as tf
 import requests
 from pymongo import MongoClient
 import numpy as np
-import random
 import time
 import json
-import shutil
-from tensorflow.python.saved_model import builder as saved_model_builder
-from tensorflow.python.saved_model.signature_def_utils import predict_signature_def
-from tensorflow.python.saved_model import tag_constants
 import onnxmltools
 
 client = MongoClient('localhost', 27017)
@@ -77,7 +72,7 @@ for document in match_data.find({"game_start": {"$gt": time.time()-MAX_TIME}}):
         for champ in document[f"{team}_champs"]:
             team_comp[champid_to_index(champ)] = 1
         x.append(team_comp)
-        if document[f'blue_win'] ^ (team != 'blue'):
+        if document['blue_win'] ^ (team != 'blue'):
             y.append([1, 0])
         else:
             y.append([0, 1])

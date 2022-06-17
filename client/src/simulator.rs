@@ -1,7 +1,7 @@
 use std::io::stdin;
 
 use super::lol_client_api::ChampSelectFetcher;
-use super::{Champ, ChampSelectState};
+use super::{Champ, ARAMChampSelectState};
 use anyhow::Error;
 use async_trait::async_trait;
 use clap::{AppSettings, Parser, Subcommand};
@@ -15,8 +15,8 @@ struct Cli {
     command: Commands,
 }
 
-lazy_static! {
-    pub static ref CHAMP_SELECT_STATE: Mutex<ChampSelectState> = Mutex::new(Default::default());
+lazy_static! { //TODO: Replace with OnceCell
+    pub static ref CHAMP_SELECT_STATE: Mutex<ARAMChampSelectState> = Mutex::new(Default::default());
 }
 
 #[derive(Debug, Clone)]
@@ -24,7 +24,7 @@ pub struct FakeChampSelectFetcher {}
 
 #[async_trait]
 impl ChampSelectFetcher for FakeChampSelectFetcher {
-    async fn get_champ_select_state(&self) -> Result<ChampSelectState, Error> {
+    async fn get_champ_select_state(&self) -> Result<ARAMChampSelectState, Error> {
         Ok(CHAMP_SELECT_STATE.lock().unwrap().to_owned())
     }
 
