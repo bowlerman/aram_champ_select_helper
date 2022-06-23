@@ -1,10 +1,12 @@
-use std::{fmt::Debug, path::Path};
+use std::{fmt::Debug};
 
 use anyhow::Error;
-use dioxus::{desktop::tao::dpi::LogicalSize, prelude::*};
+use iced::{pure::{Element, Application, widget::{Text, Column}}, Subscription, Command, executor};
 use lol_client_api::ChampSelectFetcher;
-use models::aram::ARAMAIModel;
-use tokio::time::*;
+
+use once_cell::sync::OnceCell;
+use simulator::FakeChampSelectFetcher;
+
 pub mod lol_client_api;
 mod models;
 pub mod simulator;
@@ -26,29 +28,38 @@ impl ARAMChampSelectState {
     }
 }
 
-trait Dilemma {
+trait Dilemma<A: Application>
+where A::Message: 'static {
     type Choice;
 
     fn choices(&self) -> Vec<Self::Choice>;
 
     fn eval(&self, choice: &Self::Choice) -> Result<f32, Error>;
 
-    fn repr_choice(&'_ self, choice: &Self::Choice) -> LazyNodes;
+    fn repr_choice(&'_ self, choice: Self::Choice) -> Element<'_, A::Message>;
 
-    fn repr_choice_with_win(&'_ self, choice: &Self::Choice) -> LazyNodes {
-        if let Ok(win_rate) = self.eval(choice) {
-            let c = self.repr_choice(choice);
-            rsx!("{win_rate}" c)
+    fn repr_choice_with_win(&'_ self, choice: Self::Choice) -> Element<'_, A::Message> {
+        if let Ok(win_rate) = self.eval(&choice) {
+            Column::new()
+                .push(self.repr_choice(choice))
+                .push(Text::new(format!("{:.2}%", win_rate * 100.0)))
+                .into()
         }
         else {
-            rsx!("")
+            Column::new()
+                .push(self.repr_choice(choice))
+                .push(Text::new("Error"))
+                .into()
         }
     }
 
-    fn repr_choices_with_win(&'_ self) -> LazyNodes {
-        rsx!(
-            self.choices().iter().map(|choice| self.repr_choice_with_win(choice))
-        )
+    fn repr_choices_with_win(&'_ self) -> Element<'_, A::Message>
+    {
+        let mut col = Column::new();
+        for choice in self.choices() {
+            col = col.push(self.repr_choice_with_win(choice));
+        }
+        col.into()
     }
 }
 
@@ -62,33 +73,6 @@ fn test_choices() {
     assert_eq!(cs.choices().len(), cs.bench.len() + 1)
 }
 
-pub fn start_app<Fetcher: ChampSelectFetcher + Clone + 'static>() {
-    dioxus::desktop::launch_cfg(App::<Fetcher>, |cfg| {
-        cfg.with_window(|w| {
-            w.with_title("ARAM champ select helper")
-                .with_inner_size(LogicalSize::new(620.0, 120.0))
-        })
-    });
-}
-
-#[allow(non_snake_case)]
-fn App<Fetcher: ChampSelectFetcher + Clone + 'static>(cx: Scope) -> Element {
-    {
-        let champ_select_fetcher = use_future(&cx, (), |_| async {
-            return Fetcher::new().await;
-        })
-        .value();
-        let fetcher = match champ_select_fetcher {
-            Some(fetcher) => fetcher,
-            None => return cx.render(rsx!("Waiting for lol client")),
-        };
-        cx.render(rsx!(ChampSelect {
-            fetcher: fetcher.clone()
-        }))
-    }
-}
-
-#[derive(Props)]
 struct ChampSelectProps<Fetcher: ChampSelectFetcher> {
     fetcher: Fetcher,
 }
@@ -99,7 +83,7 @@ fn ok_ref<T, E>(res: &Result<T, E>) -> Option<&T> {
         Err(_) => None,
     }
 }
-
+/*
 #[allow(non_snake_case)]
 fn ChampSelect<Fetcher: ChampSelectFetcher + Clone + 'static>(
     cx: Scope<ChampSelectProps<Fetcher>>,
@@ -157,18 +141,17 @@ fn ChampSelect<Fetcher: ChampSelectFetcher + Clone + 'static>(
         }
     }
 }
+*/
 
-#[derive(Props, PartialEq)]
 struct ARAMWinRateDisplayProps {
     champ: Champ,
     win_rate: f32,
 }
 
-#[derive(Props, PartialEq)]
 struct ChampDisplayProps {
     champ: Champ
 }
-
+/*
 #[allow(non_snake_case)]
 fn ChampDisplay(cx: Scope<ChampDisplayProps>) -> Element {
     let champ = cx.props.champ;
@@ -185,4 +168,77 @@ fn ARAMWinRateDisplay(cx: Scope<ARAMWinRateDisplayProps>) -> Element {
     let win_rate = cx.props.win_rate * 100_f32;
     let champ = cx.props.champ;
     cx.render(rsx!(div {display: "flex", flex_direction: "column", ChampDisplay{ champ: champ }, "{win_rate:.1} %"}))
+}*/
+
+#[derive(Debug, Default)]
+pub struct App {
+    champ_select_state: Option<ARAMChampSelectState>,
+    champ_select_fetcher: OnceCell<FakeChampSelectFetcher>,
+    error: Option<Error>,
+    count: u32,
+}
+
+#[derive(Debug)]
+pub enum Message {
+    InitFetcher(FakeChampSelectFetcher),
+    ChampSelectState(ARAMChampSelectState),
+    Error(Error),
+    Quit,
+}
+
+impl Application for App {
+    type Executor = executor::Default;
+
+    type Message = Message;
+
+    type Flags = ();
+
+    #[inline]
+    fn new(_flags: Self::Flags) -> (Self, Command<Self::Message>) {
+        let command = Command::perform(async {
+            FakeChampSelectFetcher::new().await
+        }, |fetcher| Message::InitFetcher(fetcher));
+        (App::default(), command)
+    }
+
+    fn title(&self) -> String {
+        "ARAM Assistant".into()
+    }
+
+    fn update(&mut self, message: Self::Message) -> Command<Self::Message> {
+        match message {
+            Message::Quit => std::process::exit(0),
+            Message::InitFetcher(fetcher) => {
+                self.champ_select_fetcher.set(fetcher.clone()).expect("InitFetcher should only be sent once");
+            },
+            Message::ChampSelectState(state) => self.champ_select_state = Some(state),
+            Message::Error(err) => {
+                self.error = Some(err);
+            }
+        }
+        self.count = self.count.wrapping_add(1);
+        Command::none()
+    }
+
+    fn view(&self) -> Element<'_, Self::Message> {
+        if let Some(fetcher) =  self.champ_select_fetcher.get() {
+            if let Some(champ_select) = &self.champ_select_state {
+                return Column::new()
+                    .push(Text::new("Your team:"))
+                    .push(Text::new(format!("{:?}", champ_select))).into();
+            } else {
+
+            Text::new(format!("Found LoL client {}", self.count)).into()}
+        } else {
+            Text::new("Waiting for LoL client").into()
+        }
+    }
+
+    fn subscription(&self) -> iced::Subscription<Self::Message> {
+        if let Some(fetcher) =  self.champ_select_fetcher.get() {
+            Subscription::from_recipe(fetcher.clone())
+        } else {
+            Subscription::none()
+        }
+    }
 }

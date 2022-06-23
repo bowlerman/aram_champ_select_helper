@@ -1,10 +1,14 @@
+use std::hash::{Hash, Hasher};
 use std::io::stdin;
+use std::pin::Pin;
 
 use super::lol_client_api::ChampSelectFetcher;
-use super::{Champ, ARAMChampSelectState};
+use super::{Champ, ARAMChampSelectState, Message};
 use anyhow::Error;
 use async_trait::async_trait;
 use clap::{AppSettings, Parser, Subcommand};
+use iced::futures::{Stream, FutureExt, TryFutureExt};
+use iced_futures::subscription::Recipe;
 use lazy_static::lazy_static;
 use std::sync::Mutex;
 
@@ -19,7 +23,7 @@ lazy_static! { //TODO: Replace with OnceCell
     pub static ref CHAMP_SELECT_STATE: Mutex<ARAMChampSelectState> = Mutex::new(Default::default());
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Hash)]
 pub struct FakeChampSelectFetcher {}
 
 #[async_trait]
@@ -30,6 +34,22 @@ impl ChampSelectFetcher for FakeChampSelectFetcher {
 
     async fn new() -> Self {
         FakeChampSelectFetcher {}
+    }
+}
+
+impl<H: Hasher, Event> Recipe<H, Event> for FakeChampSelectFetcher {
+    type Output = Message;
+
+    fn hash(&self, state: &mut H) {
+        Hash::hash(self, state);
+    }
+
+    fn stream(
+        self: Box<Self>,
+        _: iced_futures::BoxStream<Event>,
+    ) -> iced_futures::BoxStream<Self::Output> {
+        let fetcher = self.clone();
+        Box::pin(async move {Message::ChampSelectState(fetcher.get_champ_select_state().await.unwrap())}.into_stream())
     }
 }
 
