@@ -1,8 +1,5 @@
-use client::{simulator::simulator, App};
-use iced::{pure::Application, Settings};
+use client;
 
-#[tokio::main]
-async fn main() -> Result<(), iced::Error> {
-    tokio::spawn(simulator());
-    App::run(Settings::default())
+fn main() -> Result<(), iced::Error> {
+    client::main()
 }

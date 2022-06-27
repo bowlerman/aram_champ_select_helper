@@ -7,7 +7,7 @@ use reqwest::{Client, RequestBuilder};
 use serde_json::{from_value, Value};
 use tokio::time::interval;
 
-use crate::ARAMChampSelectState;
+use crate::{ARAMChampSelectState, Champ};
 
 #[async_trait]
 trait RequestBuilderExt: Sized {
@@ -25,11 +25,11 @@ trait RequestBuilderExt: Sized {
             .await?;
         let summoner_id = result
             .as_object()
-            .ok_or_else(|| anyhow!("Expecting object with summoner info"))?
+            .ok_or(anyhow!("Expecting object with summoner info"))?
             .get("summonerId")
-            .ok_or_else(|| anyhow!("Expecting summonerId field"))?
+            .ok_or(anyhow!("Expecting summonerId field"))?
             .as_u64()
-            .ok_or_else(|| anyhow!("Expecting summoner Id"))?;
+            .ok_or( anyhow!("Expecting summoner Id"))?;
         Ok(summoner_id)
     }
 }
@@ -50,20 +50,13 @@ impl RequestBuilderExt for RequestBuilder {
     }
 }
 
-#[async_trait]
-pub trait ChampSelectFetcher {
-    async fn get_champ_select_state(&self) -> Result<ARAMChampSelectState, Error>;
-
-    async fn new() -> Self;
-}
-
 #[derive(Debug)]
-pub struct RealChampSelectFetcher {
+pub struct ChampSelectFetcher {
     request: RequestBuilder,
     summoner_id: u64,
 }
 
-impl Clone for RealChampSelectFetcher {
+impl Clone for ChampSelectFetcher {
     fn clone(&self) -> Self {
         Self {
             request: self.request.try_clone().unwrap(),
@@ -72,52 +65,52 @@ impl Clone for RealChampSelectFetcher {
     }
 }
 
-#[async_trait]
-impl ChampSelectFetcher for RealChampSelectFetcher {
-    async fn get_champ_select_state(&self) -> Result<ARAMChampSelectState, Error> {
+impl ChampSelectFetcher {
+    pub async fn get_champ_select_state(&self) -> Result<ARAMChampSelectState, Error> {
         let response = self
             .request
             .try_clone()
-            .ok_or_else(|| anyhow!("Could not clone champ select api request"))?
+            .ok_or(anyhow!("Could not clone champ select api request"))?
             .send()
             .await?;
         let base_json: Value = response.json().await?;
         let json = base_json
             .as_object()
-            .ok_or_else(|| anyhow!("Expecting object at top level"))?;
+            .ok_or(anyhow!("Expecting object at top level"))?;
         if let Some(Value::Number(_)) = json.get("httpStatus") {
             Err(anyhow!("Not in champ select"))?
         }
-        let bench = from_value(json["benchChampionIds"].clone())?;
+        let bench: Vec<u16> = from_value(json["benchChampionIds"].clone())?;
         let mut team_champs = Vec::new();
         let mut your_champ = 0;
+        let mut count = 0;
         for member_val in json["myTeam"]
             .as_array()
-            .ok_or_else(|| anyhow!("Expecting list of team members"))?
+            .ok_or(anyhow!("Expecting list of team members"))?
         {
             let member = member_val
                 .as_object()
-                .ok_or_else(|| anyhow!("Expecting team member object"))?;
-            let champ_id = from_value(member["championId"].clone())?;
+                .ok_or(anyhow!("Expecting team member object"))?;
+            let champ_id: u16 = from_value(member["championId"].clone())?;
             if member["summonerId"]
                 .as_u64()
-                .ok_or_else(|| anyhow!("Expecting summoner Id of team member"))?
+                .ok_or(anyhow!("Expecting summoner Id of team member"))?
                 == self.summoner_id
             {
-                your_champ = champ_id;
-            } else {
-                team_champs.push(champ_id);
+                your_champ = count;
             }
+            team_champs.push(champ_id);
+            count += 1;
         }
-        let team_champs = team_champs.as_slice().try_into()?;
+        let team_champs: [u16; 5] = team_champs.as_slice().try_into()?;
         Ok(ARAMChampSelectState {
             your_champ,
-            bench,
-            team_champs,
+            bench: bench.iter().map(|&id| Champ{id}).collect(),
+            team_champs: team_champs.map(|id| Champ{id}),
         })
     }
 
-    async fn new() -> Self {
+    pub async fn new() -> Self {
         let mut wait = interval(Duration::from_millis(1000));
         let summoner_id = loop {
             if let (Ok(summoner_id), _) =
