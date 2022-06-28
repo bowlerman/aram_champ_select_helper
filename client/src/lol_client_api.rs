@@ -1,13 +1,12 @@
-use std::time::Duration;
-
 use anyhow::{anyhow, Error};
 use async_trait::async_trait;
 use league_client_connector::LeagueClientConnector;
 use reqwest::{Client, RequestBuilder};
 use serde_json::{from_value, Value};
+use std::time::Duration;
 use tokio::time::interval;
 
-use crate::{ARAMChampSelectState, Champ};
+use super::{ARAMChampSelectState, Champ};
 
 #[async_trait]
 trait RequestBuilderExt: Sized {
@@ -29,7 +28,7 @@ trait RequestBuilderExt: Sized {
             .get("summonerId")
             .ok_or(anyhow!("Expecting summonerId field"))?
             .as_u64()
-            .ok_or( anyhow!("Expecting summoner Id"))?;
+            .ok_or(anyhow!("Expecting summoner Id"))?;
         Ok(summoner_id)
     }
 }
@@ -105,8 +104,8 @@ impl ChampSelectFetcher {
         let team_champs: [u16; 5] = team_champs.as_slice().try_into()?;
         Ok(ARAMChampSelectState {
             your_champ,
-            bench: bench.iter().map(|&id| Champ{id}).collect(),
-            team_champs: team_champs.map(|id| Champ{id}),
+            bench: bench.iter().map(|&id| Champ { id }).collect(),
+            team_champs: team_champs.map(|id| Champ { id }),
         })
     }
 

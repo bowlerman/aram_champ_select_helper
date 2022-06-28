@@ -1,5 +1,6 @@
-use client;
+mod gui;
+use client as logic;
 
 fn main() -> Result<(), iced::Error> {
-    client::main()
+    gui::main()
 }

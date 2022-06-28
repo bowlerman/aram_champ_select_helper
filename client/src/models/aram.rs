@@ -3,7 +3,7 @@ use anyhow::Error;
 use std::{collections::HashMap, fs::File};
 use tract_onnx::prelude::*;
 
-use crate::{ARAMChampSelectState};
+use crate::ARAMChampSelectState;
 
 type OnnxModel = SimplePlan<TypedFact, Box<dyn TypedOp>, Graph<TypedFact, Box<dyn TypedOp>>>;
 
