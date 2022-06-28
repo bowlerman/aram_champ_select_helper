@@ -25,21 +25,11 @@ impl From<Champ> for String {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Default, Clone, PartialEq, Eq)]
 pub struct ARAMChampSelectState {
     pub your_champ: usize,
     pub bench: Vec<Champ>,
     pub team_champs: [Champ; 5],
-}
-
-impl Default for ARAMChampSelectState {
-    fn default() -> Self {
-        Self {
-            your_champ: Default::default(),
-            bench: Default::default(),
-            team_champs: Default::default(),
-        }
-    }
 }
 
 impl ARAMChampSelectState {

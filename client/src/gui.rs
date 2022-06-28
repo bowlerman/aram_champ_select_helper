@@ -6,7 +6,7 @@ use iced::{
         widget::{Button, Column, Image, Row, Text, TextInput},
         Application, Element,
     },
-    Command, Length, Settings, Subscription,
+    Command, Length, Settings, Subscription, futures::FutureExt,
 };
 use iced_futures::backend::default::time;
 use once_cell::sync::OnceCell;
@@ -51,7 +51,7 @@ pub fn main() -> Result<(), iced::Error> {
 
 #[derive(Debug, Clone)]
 enum Message {
-    InitFetcher(ChampSelectFetcher),
+    InitFetcher(Box<ChampSelectFetcher>),
     SetChampSelectState(ARAMChampSelectState),
     UpdateChampSelectState,
     EnableManualInput,
@@ -81,7 +81,7 @@ impl Application for App {
     type Flags = ();
 
     fn new(_flags: Self::Flags) -> (Self, Command<Self::Message>) {
-        let command = Command::perform(ChampSelectFetcher::new(), Message::InitFetcher);
+        let command = Command::perform(ChampSelectFetcher::new().map(Box::new), Message::InitFetcher);
         (App::default(), command)
     }
 
@@ -96,7 +96,7 @@ impl Application for App {
         match message {
             Message::InitFetcher(fetcher) => {
                 self.champ_select_fetcher
-                    .set(fetcher.clone())
+                    .set(*fetcher)
                     .expect("InitFetcher should only be sent once");
             }
             Message::SetChampSelectState(state) => self.champ_select_state = Some(state),

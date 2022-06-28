@@ -24,11 +24,11 @@ trait RequestBuilderExt: Sized {
             .await?;
         let summoner_id = result
             .as_object()
-            .ok_or(anyhow!("Expecting object with summoner info"))?
+            .ok_or_else(|| anyhow!("Expecting object with summoner info"))?
             .get("summonerId")
-            .ok_or(anyhow!("Expecting summonerId field"))?
+            .ok_or_else(|| anyhow!("Expecting summonerId field"))?
             .as_u64()
-            .ok_or(anyhow!("Expecting summoner Id"))?;
+            .ok_or_else(|| anyhow!("Expecting summoner Id"))?;
         Ok(summoner_id)
     }
 }
@@ -69,37 +69,35 @@ impl ChampSelectFetcher {
         let response = self
             .request
             .try_clone()
-            .ok_or(anyhow!("Could not clone champ select api request"))?
+            .ok_or_else(|| anyhow!("Could not clone champ select api request"))?
             .send()
             .await?;
         let base_json: Value = response.json().await?;
         let json = base_json
             .as_object()
-            .ok_or(anyhow!("Expecting object at top level"))?;
+            .ok_or_else(|| anyhow!("Expecting object at top level"))?;
         if let Some(Value::Number(_)) = json.get("httpStatus") {
             Err(anyhow!("Not in champ select"))?
         }
         let bench: Vec<u16> = from_value(json["benchChampionIds"].clone())?;
         let mut team_champs = Vec::new();
         let mut your_champ = 0;
-        let mut count = 0;
-        for member_val in json["myTeam"]
+        for (count, member_val) in json["myTeam"]
             .as_array()
-            .ok_or(anyhow!("Expecting list of team members"))?
+            .ok_or_else(|| anyhow!("Expecting list of team members"))?.iter().enumerate()
         {
             let member = member_val
                 .as_object()
-                .ok_or(anyhow!("Expecting team member object"))?;
+                .ok_or_else(|| anyhow!("Expecting team member object"))?;
             let champ_id: u16 = from_value(member["championId"].clone())?;
             if member["summonerId"]
                 .as_u64()
-                .ok_or(anyhow!("Expecting summoner Id of team member"))?
+                .ok_or_else(|| anyhow!("Expecting summoner Id of team member"))?
                 == self.summoner_id
             {
                 your_champ = count;
             }
             team_champs.push(champ_id);
-            count += 1;
         }
         let team_champs: [u16; 5] = team_champs.as_slice().try_into()?;
         Ok(ARAMChampSelectState {
