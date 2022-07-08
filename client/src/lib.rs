@@ -1,7 +1,7 @@
 pub mod lol_client_api;
 pub mod models;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Hash)]
 pub struct Champ {
     pub id: u16,
 }
@@ -27,14 +27,14 @@ impl From<Champ> for String {
 
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
 pub struct ARAMChampSelectState {
-    pub your_champ: usize,
+    pub your_champ_index: usize,
     pub bench: Vec<Champ>,
     pub team_champs: [Champ; 5],
 }
 
 impl ARAMChampSelectState {
     pub fn choices(&self) -> Vec<Champ> {
-        let mut ret = vec![self.team_champs[self.your_champ]];
+        let mut ret = vec![self.team_champs[self.your_champ_index]];
         ret.extend(&self.bench);
         ret
     }
@@ -65,7 +65,7 @@ impl ARAMChampSelectState {
 #[test]
 fn test_choices() {
     let cs = ARAMChampSelectState {
-        your_champ: 4,
+        your_champ_index: 4,
         bench: vec![1, 51, 124, 12, 53].iter().map(|&x| x.into()).collect(),
         team_champs: [123, 12, 3, 1, 12].map(|x| x.into()),
     };

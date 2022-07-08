@@ -1,12 +1,15 @@
-use std::{path::Path, time::Duration};
+use std::{path::Path, sync::Arc, time::Duration};
 
+use anyhow::Error;
+use client::models::aram::ARAMAIModel;
 use iced::{
     executor,
+    futures::FutureExt,
     pure::{
         widget::{Button, Column, Image, Row, Text, TextInput},
         Application, Element,
     },
-    Command, Length, Settings, Subscription, futures::FutureExt,
+    Command, Length, Settings, Subscription,
 };
 use iced_futures::backend::default::time;
 use once_cell::sync::OnceCell;
@@ -31,14 +34,35 @@ fn view_champ(champ: Champ) -> Element<'static, Message> {
 
 #[derive(Debug, Default)]
 struct App {
-    champ_select_state: Option<ARAMChampSelectState>,
+    champ_select_state: ClientState,
     champ_select_fetcher: OnceCell<ChampSelectFetcher>,
+    aram_ai_model: OnceCell<ARAMAIModel>,
     debug: DebugInfo,
     manual_input_enabled: bool,
     selected_champ: Champ,
     champ_input: String,
 }
 
+#[derive(Debug)]
+enum ClientState {
+    WaitingForChampSelect,
+    ChampSelect(ARAMChampSelectState)
+}
+
+impl Default for ClientState {
+    fn default() -> Self {
+        ClientState::WaitingForChampSelect
+    }
+}
+
+impl ClientState {
+    fn is_champ_select(&self) -> bool {
+        match self {
+            ClientState::ChampSelect(_) => true,
+            _ => false,
+        }
+    }
+}
 #[derive(Debug, Default)]
 struct DebugInfo {
     enabled: bool,
@@ -52,11 +76,13 @@ pub fn main() -> Result<(), iced::Error> {
 #[derive(Debug, Clone)]
 enum Message {
     InitFetcher(Box<ChampSelectFetcher>),
+    InitARAMAIModel(ARAMAIModel),
     SetChampSelectState(ARAMChampSelectState),
     UpdateChampSelectState,
     EnableManualInput,
     ManualInput(ManualInputMessage),
     Debug(DebugMessage),
+    Error(Arc<Error>),
 }
 
 #[derive(Debug, Clone)]
@@ -81,8 +107,18 @@ impl Application for App {
     type Flags = ();
 
     fn new(_flags: Self::Flags) -> (Self, Command<Self::Message>) {
-        let command = Command::perform(ChampSelectFetcher::new().map(Box::new), Message::InitFetcher);
-        (App::default(), command)
+        let command_fetcher = Command::perform(
+            ChampSelectFetcher::new().map(Box::new),
+            Message::InitFetcher,
+        );
+        let command_ai_model = Command::perform(async { ARAMAIModel::new() }, |r| match r {
+            Err(e) => Message::Error(Arc::new(e)),
+            Ok(v) => Message::InitARAMAIModel(v),
+        });
+        (
+            App::default(),
+            Command::batch([command_fetcher, command_ai_model]),
+        )
     }
 
     fn title(&self) -> String {
@@ -99,12 +135,20 @@ impl Application for App {
                     .set(*fetcher)
                     .expect("InitFetcher should only be sent once");
             }
-            Message::SetChampSelectState(state) => self.champ_select_state = Some(state),
+            Message::InitARAMAIModel(model) => {
+                self.aram_ai_model
+                    .set(model)
+                    .expect("InitARAMAIModel should only be sent once");
+            }
+            Message::SetChampSelectState(state) => self.champ_select_state = ClientState::ChampSelect(state),
             Message::UpdateChampSelectState => {
                 let fetcher = self.champ_select_fetcher.get().unwrap().clone();
                 return Command::perform(
-                    async move { fetcher.get_champ_select_state().await.unwrap() },
-                    Message::SetChampSelectState,
+                    async move { fetcher.get_champ_select_state().await },
+                    |r| match r {
+                        Err(e) => Message::Error(Arc::new(e)),
+                        Ok(v) => Message::SetChampSelectState(v),
+                    },
                 );
             }
             Message::Debug(debug) => match debug {
@@ -112,24 +156,17 @@ impl Application for App {
             },
             Message::EnableManualInput => {
                 self.manual_input_enabled = true;
-                if self.champ_select_state.is_none() {
-                    self.champ_select_state = Some(Default::default());
+                if let ClientState::WaitingForChampSelect = self.champ_select_state {
+                    self.champ_select_state = ClientState::ChampSelect(Default::default());
                 }
             }
             Message::ManualInput(input) => {
                 self.update_manual(input);
             }
+            Message::Error(_) => {} // TODO: Log/display error
         }
 
         Command::none()
-    }
-
-    fn view(&self) -> Element<Self::Message> {
-        Column::new()
-            .push(self.debug_view())
-            .push(self.settings_view())
-            .push(self.champ_select_container_view())
-            .into()
     }
 
     fn subscription(&self) -> iced::Subscription<Self::Message> {
@@ -139,6 +176,14 @@ impl Application for App {
             Subscription::none()
         }
     }
+
+    fn view(&self) -> Element<Self::Message> {
+        Column::new()
+            .push(self.debug_view())
+            .push(self.settings_view())
+            .push(self.champ_select_container_view())
+            .into()
+    }
 }
 
 impl App {
@@ -147,33 +192,37 @@ impl App {
     }
 
     fn update_manual(&mut self, input: ManualInputMessage) {
+        if !self.champ_select_state.is_champ_select() {
+            self.champ_select_state = ClientState::ChampSelect(Default::default());
+        }
+        let champ_select_state = match &mut self.champ_select_state {
+            ClientState::ChampSelect(state) => state,
+            _ => unreachable!("We just set client state to champ select"),
+        };
         match input {
             ManualInputMessage::AddBench(champ) => {
-                self.champ_select_state.as_mut().unwrap().add_bench(champ);
+                champ_select_state.add_bench(champ);
             }
             ManualInputMessage::RemoveBench(index) => {
-                self.champ_select_state
-                    .as_mut()
-                    .unwrap()
+                champ_select_state
                     .remove_bench(index);
             }
             ManualInputMessage::SwapBench(index, champ) => {
-                self.champ_select_state
-                    .as_mut()
-                    .unwrap()
+                champ_select_state
                     .swap_bench(index, champ);
             }
             ManualInputMessage::SwapTeam(index, champ) => {
-                self.champ_select_state
-                    .as_mut()
-                    .unwrap()
+                champ_select_state
                     .swap_team(index, champ);
             }
             ManualInputMessage::ChangeSelection(champ) => {
                 self.champ_input = champ.clone();
-                if let Ok(champ) = champ.try_into() {self.selected_champ = champ}
-            },
+                if let Ok(champ) = champ.try_into() {
+                    self.selected_champ = champ
+                }
+            }
         }
+        self.champ_select_state = ClientState::ChampSelect(champ_select_state.clone());
     }
 
     fn settings_view(&self) -> Element<Message> {
@@ -206,11 +255,13 @@ impl App {
 
     fn champ_select_container_view(&self) -> Element<Message> {
         let mut col = Column::new();
-        if let Some(champ_select_state) = &self.champ_select_state {
+        if let ClientState::ChampSelect(champ_select_state) = &self.champ_select_state {
             if self.manual_input_enabled {
                 col = col.push(self.manual_input_view());
             }
-            col = col.push(self.champ_select_view(champ_select_state)).push(self.win_rate_view(champ_select_state));
+            col = col
+                .push(self.champ_select_view(champ_select_state))
+                .push(self.win_rate_view(champ_select_state));
         } else {
             col = match self.manual_input_enabled {
                 // We initialize champ select when enabling manual input, so this should never happen.
@@ -252,11 +303,22 @@ impl App {
 
     fn manual_input_view(&self) -> Element<Message> {
         let row = Row::new();
-        row.push(TextInput::new("champion id", &self.champ_input, |c| Message::ManualInput(ManualInputMessage::ChangeSelection(c)))).into()
+        row.push(TextInput::new("champion id", &self.champ_input, |c| {
+            Message::ManualInput(ManualInputMessage::ChangeSelection(c))
+        }))
+        .into()
     }
 
     fn win_rate_view(&self, champ_select_state: &ARAMChampSelectState) -> Element<Message> {
-        //let mut row = Row::new();
-        todo!()
+        let mut row = Row::new();
+        if let Some(model) = self.aram_ai_model.get() {
+            for champ in champ_select_state.choices() {
+                let mut team = champ_select_state.team_champs;
+                *team.get_mut(champ_select_state.your_champ_index).unwrap() = champ;
+                let win_rate = model.get_win_rate(&team).unwrap();
+                row = row.push(Text::new(format!("{:?}: {}%", champ, win_rate)));
+            }
+        }
+        row.into()
     }
 }

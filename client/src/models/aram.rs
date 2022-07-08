@@ -3,17 +3,18 @@ use anyhow::Error;
 use std::{collections::HashMap, fs::File};
 use tract_onnx::prelude::*;
 
-use crate::ARAMChampSelectState;
+use crate::{ARAMChampSelectState, Champ};
 
 type OnnxModel = SimplePlan<TypedFact, Box<dyn TypedOp>, Graph<TypedFact, Box<dyn TypedOp>>>;
 
+#[derive(Debug, Clone)]
 pub struct ARAMAIModel {
     model: OnnxModel,
-    champ_dict: HashMap<u16, usize>,
+    champ_dict: HashMap<Champ, usize>,
 }
 
 impl ARAMAIModel {
-    pub fn get_win_rate(&self, team: &[u16; 5]) -> Result<f32, Error> {
+    pub fn get_win_rate(&self, team: &[Champ; 5]) -> Result<f32, Error> {
         let tot_champs = self.champ_dict.len();
         let mut one_hot = vec![0_f32; tot_champs + 1];
         for champ in team {
@@ -28,12 +29,13 @@ impl ARAMAIModel {
             .expect("Expecting model output");
         let res: [f32; 2] = tensor_res.as_slice()?.try_into()?;
         let sum = res[0] + res[1];
-        Ok(res[0] / sum)
+        Ok(res[0] / sum * 100.)
     }
 
     pub fn new() -> Result<ARAMAIModel, Error> {
         let champs: Vec<(String, u16)> =
             serde_json::from_reader(File::open("model-trainer/champs.json").unwrap()).unwrap();
+        let champs: Vec<(String, Champ)> = champs.into_iter().map(|(name, id)| (name, Champ::from(id))).collect();
         let tot_champs = champs.len();
         let champ_dict = map_champ_id_to_index(&champs).unwrap();
         let model = tract_onnx::onnx()
@@ -52,7 +54,7 @@ impl ARAMAIModel {
     }
 }
 
-fn map_champ_id_to_index(all_champs: &[(String, u16)]) -> Result<HashMap<u16, usize>, Error> {
+fn map_champ_id_to_index(all_champs: &[(String, Champ)]) -> Result<HashMap<Champ, usize>, Error> {
     let mut map = HashMap::new();
     for (i, &(_, champ_id)) in all_champs.iter().enumerate() {
         map.insert(champ_id, i);

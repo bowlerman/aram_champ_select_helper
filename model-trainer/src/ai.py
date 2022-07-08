@@ -16,7 +16,7 @@ champ_data = requests.get(f"https://ddragon.leagueoflegends.com/cdn/{lol_version
 CHAMPS = [(champ, int(champ_data[champ]["key"])) for champ in champ_data]
 CHAMPS.sort(key=lambda x: x[1])
 NUM_CHAMPS = len(CHAMPS)
-MAX_TIME = 60*60*24*7
+MAX_TIME = 60*60*24*7*1000
 
 with open("model-trainer/champs.json", "w") as champ_file:
     json.dump(CHAMPS, champ_file)
@@ -66,7 +66,7 @@ def champ_list_to_one_hot(champ_list):
 x = []
 y = []
 
-for document in match_data.find({"game_start": {"$gt": time.time()-MAX_TIME}}):
+for document in match_data.find({"game_start": {"$gt": time.time()*1000-MAX_TIME}}):
     for team in ['blue', 'red']:
         team_comp = [0]*(NUM_CHAMPS+1)
         for champ in document[f"{team}_champs"]:

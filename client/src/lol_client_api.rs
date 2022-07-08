@@ -101,7 +101,7 @@ impl ChampSelectFetcher {
         }
         let team_champs: [u16; 5] = team_champs.as_slice().try_into()?;
         Ok(ARAMChampSelectState {
-            your_champ,
+            your_champ_index: your_champ,
             bench: bench.iter().map(|&id| Champ { id }).collect(),
             team_champs: team_champs.map(|id| Champ { id }),
         })
