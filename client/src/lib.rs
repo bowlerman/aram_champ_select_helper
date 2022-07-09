@@ -27,7 +27,7 @@ impl From<Champ> for String {
 
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
 pub struct ARAMChampSelectState {
-    pub your_champ_index: usize,
+    your_champ_index: usize,
     pub bench: Vec<Champ>,
     pub team_champs: [Champ; 5],
 }
@@ -59,6 +59,14 @@ impl ARAMChampSelectState {
         if index < self.team_champs.len() {
             self.team_champs[index] = champ;
         }
+    }
+
+    pub fn your_champ(&self) -> Champ {
+        self.team_champs[self.your_champ_index]
+    }
+
+    pub fn your_champ_mut(&mut self) -> &mut Champ {
+        &mut self.team_champs[self.your_champ_index]
     }
 }
 

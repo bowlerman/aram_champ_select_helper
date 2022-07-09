@@ -34,13 +34,13 @@ impl ARAMAIModel {
 
     pub fn new() -> Result<ARAMAIModel, Error> {
         let champs: Vec<(String, u16)> =
-            serde_json::from_reader(File::open("model-trainer/champs.json").unwrap()).unwrap();
+            serde_json::from_reader(File::open("model-trainer/champs.json")?)?;
         let champs: Vec<(String, Champ)> = champs.into_iter().map(|(name, id)| (name, Champ::from(id))).collect();
         let tot_champs = champs.len();
-        let champ_dict = map_champ_id_to_index(&champs).unwrap();
+        let champ_dict = map_champ_id_to_index(&champs)?;
         let model = tract_onnx::onnx()
             // load the model
-            .model_for_path("./model-trainer/model.onnx")?
+            .model_for_path("./model-trainer/aram_champ_select_model.onnx")?
             // specify input type and shape
             .with_input_fact(
                 0,

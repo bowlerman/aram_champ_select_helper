@@ -57,10 +57,7 @@ impl Default for ClientState {
 
 impl ClientState {
     fn is_champ_select(&self) -> bool {
-        match self {
-            ClientState::ChampSelect(_) => true,
-            _ => false,
-        }
+        matches!(self, ClientState::ChampSelect(_))
     }
 }
 #[derive(Debug, Default)]
@@ -76,7 +73,7 @@ pub fn main() -> Result<(), iced::Error> {
 #[derive(Debug, Clone)]
 enum Message {
     InitFetcher(Box<ChampSelectFetcher>),
-    InitARAMAIModel(ARAMAIModel),
+    InitARAMAIModel(Box<ARAMAIModel>),
     SetChampSelectState(ARAMChampSelectState),
     UpdateChampSelectState,
     EnableManualInput,
@@ -113,7 +110,7 @@ impl Application for App {
         );
         let command_ai_model = Command::perform(async { ARAMAIModel::new() }, |r| match r {
             Err(e) => Message::Error(Arc::new(e)),
-            Ok(v) => Message::InitARAMAIModel(v),
+            Ok(v) => Message::InitARAMAIModel(Box::new(v)),
         });
         (
             App::default(),
@@ -137,12 +134,12 @@ impl Application for App {
             }
             Message::InitARAMAIModel(model) => {
                 self.aram_ai_model
-                    .set(model)
+                    .set(*model)
                     .expect("InitARAMAIModel should only be sent once");
             }
             Message::SetChampSelectState(state) => self.champ_select_state = ClientState::ChampSelect(state),
             Message::UpdateChampSelectState => {
-                let fetcher = self.champ_select_fetcher.get().unwrap().clone();
+                let fetcher = self.champ_select_fetcher.get().expect("Update requests should only be sent if there is a fetcher").clone();
                 return Command::perform(
                     async move { fetcher.get_champ_select_state().await },
                     |r| match r {
@@ -313,11 +310,13 @@ impl App {
         let mut row = Row::new();
         if let Some(model) = self.aram_ai_model.get() {
             for champ in champ_select_state.choices() {
-                let mut team = champ_select_state.team_champs;
-                *team.get_mut(champ_select_state.your_champ_index).unwrap() = champ;
-                let win_rate = model.get_win_rate(&team).unwrap();
+                let mut team = champ_select_state.clone();
+                *team.your_champ_mut() = champ;
+                let win_rate = model.get_win_rate(&team.team_champs).unwrap_or(f32::NAN);
                 row = row.push(Text::new(format!("{:?}: {}%", champ, win_rate)));
             }
+        } else {
+            row = row.push(Text::new("Could not load AI model. Please "));
         }
         row.into()
     }

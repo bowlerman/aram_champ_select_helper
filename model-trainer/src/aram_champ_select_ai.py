@@ -102,7 +102,7 @@ model.fit(x_train, y_train, epochs=20)
 model.evaluate(x_test, y_test)
 predictions = model.predict(x_test)
 onnx_model = onnxmltools.convert_keras(model)
-onnxmltools.utils.save_model(onnx_model, 'model-trainer/model.onnx')
+onnxmltools.utils.save_model(onnx_model, 'model-trainer/aram_champ_select_ai.onnx')
 
 # Checking if the certainty of the model is accurate
 bound_interval = 0.01

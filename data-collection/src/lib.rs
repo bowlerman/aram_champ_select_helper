@@ -1,26 +1,22 @@
 use futures::stream::StreamExt;
 use mongodb::bson::{doc, Bson};
-use mongodb::options::UpdateOptions;
-use mongodb::{Collection, Database, IndexModel};
-use riven::consts::{Champion, PlatformRoute, Queue, RegionalRoute};
+use mongodb::options::{UpdateOptions, ClientOptions};
+use mongodb::{Collection, Database, IndexModel, Client};
+use riven::consts::{Champion, Queue, RegionalRoute};
 use riven::models::match_v5::Match;
 use riven::RiotApi;
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
+use std::convert::Infallible;
 use std::error::Error;
 use std::fmt::Display;
 use std::hash::Hash;
-use std::time::{SystemTime, UNIX_EPOCH};
 use tokio::try_join;
+use summoners::{insert_first_summoner, get_summoner_id, SummonerDocument, insert_summoner_by_puuid};
+use utils::get_current_unix_time;
 
-pub fn get_current_unix_time() -> i64 {
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .expect("current time should be after unix epoch")
-        .as_secs()
-        .try_into()
-        .expect("time should not be larger than 2^63-1")
-}
+mod summoners;
+mod utils;
 
 #[derive(Debug, Clone)]
 enum PlayerTeam {
@@ -38,14 +34,10 @@ impl Display for PlayerTeam {
     }
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct SummonerDocument {
-    puuid: String,
-    time_at_last_fetch: i64,
-}
+
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Hash)]
-pub struct MatchDocument {
+pub struct ARAMMatchDocument {
     pub blue_champs: [Champion; 5], // champs of Team 100
     pub red_champs: [Champion; 5],  // champs of Team 200
     pub blue_win: bool,
@@ -53,8 +45,8 @@ pub struct MatchDocument {
     pub game_start: i64,
 }
 
-impl From<MatchDocument> for Bson {
-    fn from(m_doc: MatchDocument) -> Self {
+impl From<ARAMMatchDocument> for Bson {
+    fn from(m_doc: ARAMMatchDocument) -> Self {
         Bson::Document(
             doc! {"blue_champs": Into::<Vec<Bson>>::into(m_doc.blue_champs.map(|c| Into::<Bson>::into(Into::<i16>::into(c) as i32))) , "red_champs": Into::<Vec<Bson>>::into(m_doc.red_champs.map(|c| Into::<Bson>::into(Into::<i16>::into(c) as i32))), "blue_win": m_doc.blue_win, "match_id": m_doc.match_id, "game_start": m_doc.game_start},
         )
@@ -129,7 +121,7 @@ impl Display for Not10Players {
 
 impl Error for Not10Players {}
 
-pub fn get_match_data_from_match(matc: &Match) -> Result<MatchDocument, Box<dyn Error>> {
+pub fn get_match_data_from_match(matc: &Match) -> Result<ARAMMatchDocument, Box<dyn Error>> {
     let match_id = matc.metadata.match_id.clone();
     let mut blue_champs = vec![];
     let mut red_champs = vec![];
@@ -180,7 +172,7 @@ pub fn get_match_data_from_match(matc: &Match) -> Result<MatchDocument, Box<dyn 
     if !(blue_win || red_win) {
         return Err(Box::new(NoWinner { match_id }));
     }
-    Ok(MatchDocument {
+    Ok(ARAMMatchDocument {
         blue_champs,
         red_champs,
         blue_win,
@@ -206,7 +198,7 @@ pub fn get_puuids_from_match(matc: &Match) -> Result<[String; 10], Box<dyn Error
 
 pub async fn init_collection_indices(db: &Database) -> Result<(), Box<dyn Error>> {
     let summoners = db.collection::<SummonerDocument>("summoners");
-    let matches = db.collection::<MatchDocument>("matches");
+    let matches = db.collection::<ARAMMatchDocument>("matches");
     let summoners_future = summoners.create_indexes(
         vec![
             IndexModel::builder().keys(doc! {"puuid":1}).build(),
@@ -227,23 +219,9 @@ pub async fn init_collection_indices(db: &Database) -> Result<(), Box<dyn Error>
     Ok(())
 }
 
-pub async fn insert_summoner_by_puuid(
-    puuid: String,
-    summoner_collection: &Collection<SummonerDocument>,
-) -> Result<(), Box<dyn Error>> {
-    summoner_collection
-        .update_one(
-            doc! {"puuid": puuid},
-            doc! { "$setOnInsert": { "time_at_last_fetch" : 0_i64}},
-            Some(UpdateOptions::builder().upsert(true).build()),
-        )
-        .await?;
-    Ok(())
-}
-
 pub async fn insert_match_data(
-    match_data: MatchDocument,
-    match_collection: &Collection<MatchDocument>,
+    match_data: ARAMMatchDocument,
+    match_collection: &Collection<ARAMMatchDocument>,
 ) -> Result<(), Box<dyn Error>> {
     match_collection
         .update_one(
@@ -253,35 +231,6 @@ pub async fn insert_match_data(
         )
         .await?;
     Ok(())
-}
-
-pub async fn insert_first_summoner(
-    summoner_name: &str,
-    summoner_collection: &Collection<SummonerDocument>,
-    riot_api: &RiotApi,
-) -> Result<(), Box<dyn Error>> {
-    let summoner = riot_api
-        .summoner_v4()
-        .get_by_summoner_name(PlatformRoute::EUW1, summoner_name)
-        .await?
-        .ok_or_else(|| format!("summoner {} does not exist on the platform", summoner_name))?;
-    insert_summoner_by_puuid(summoner.puuid, summoner_collection).await?;
-    Ok(())
-}
-
-pub async fn get_summoner_id(
-    summoner_collection: &Collection<SummonerDocument>,
-    time_bound: i64,
-) -> Result<String, Box<dyn Error>> {
-    let current_time = get_current_unix_time();
-    let earliest_time = current_time - time_bound;
-    let filter = doc! {"time_at_last_fetch" : {"$lt" : earliest_time} };
-    let update = doc! { "$set" : {"time_at_last_fetch" : current_time}};
-    Ok(summoner_collection
-        .find_one_and_update(filter, update, None)
-        .await?
-        .ok_or("no_summoner")?
-        .puuid)
 }
 
 pub async fn get_match_ids(
@@ -305,7 +254,7 @@ pub async fn get_match_ids(
 }
 
 pub async fn filter_match_ids(
-    match_collection: &Collection<MatchDocument>,
+    match_collection: &Collection<ARAMMatchDocument>,
     match_ids: Vec<String>,
 ) -> Result<Vec<String>, Box<dyn Error>> {
     let old_matches = match_collection
@@ -320,4 +269,49 @@ pub async fn filter_match_ids(
         .map(|s| s.to_owned())
         .collect::<Vec<String>>();
     Ok(new_matches)
+}
+
+#[derive(Debug, Clone)]
+struct NonExistentMatchInDB {
+    match_id: String,
+}
+
+impl Display for NonExistentMatchInDB {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "match {} is in DB but does not exist in Riot DB",
+            self.match_id
+        )
+    }
+}
+
+impl Error for NonExistentMatchInDB {}
+
+pub async fn collect_data(seed_summoner: &str, time_limit: i64) -> Result<Infallible, Box<dyn Error>> {
+    let client_options = ClientOptions::parse("mongodb://db:27017");
+    let client = Client::with_options(client_options.await?)?;
+    let db = &client.database("aram_champ_select_helper");
+    let summoner_collection = &db.collection("summoners");
+    let match_collection = &db.collection("matches");
+    init_collection_indices(db).await?;
+    let mut riot_api = RiotApi::new(std::env!("RGAPI_KEY"));
+    insert_first_summoner(seed_summoner, summoner_collection, &riot_api).await?;
+    loop {
+        let summoner_puuid = get_summoner_id(summoner_collection, time_limit).await?;
+        let match_ids = get_match_ids(summoner_puuid, time_limit, &mut riot_api).await?;
+        for match_id in filter_match_ids(match_collection, match_ids).await? {
+            let matc = &riot_api
+                .match_v5()
+                .get_match(RegionalRoute::EUROPE, &match_id)
+                .await?
+                .ok_or_else(|| Box::new(NonExistentMatchInDB { match_id }))?;
+            let match_data = get_match_data_from_match(matc)?;
+            let puuids = get_puuids_from_match(matc)?;
+            for puuid in puuids {
+                insert_summoner_by_puuid(puuid, summoner_collection).await?
+            }
+            insert_match_data(match_data, match_collection).await?
+        }
+    }
 }

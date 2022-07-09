@@ -58,7 +58,7 @@ pub struct ChampSelectFetcher {
 impl Clone for ChampSelectFetcher {
     fn clone(&self) -> Self {
         Self {
-            request: self.request.try_clone().unwrap(),
+            request: self.request.try_clone().expect("request used in champ select should be cloneable"),
             summoner_id: self.summoner_id,
         }
     }
