@@ -22,10 +22,7 @@ with open("model-trainer/champs.json", "w") as champ_file:
     json.dump(CHAMPS, champ_file)
 
 def champ_to_index(champ) -> int:
-    for i in range(NUM_CHAMPS):
-        if CHAMPS[i][0] == champ:
-            return i
-    return NUM_CHAMPS
+    return next((i for i in range(NUM_CHAMPS) if CHAMPS[i][0] == champ), NUM_CHAMPS)
 
 
 def index_to_champ(index):
@@ -33,10 +30,7 @@ def index_to_champ(index):
 
 
 def champid_to_index(champ_id) -> int:
-    for i in range(NUM_CHAMPS):
-        if CHAMPS[i][1] == champ_id:
-            return i
-    return NUM_CHAMPS
+    return next((i for i in range(NUM_CHAMPS) if CHAMPS[i][1] == champ_id), NUM_CHAMPS)
 
 
 def champid_to_champ(champ_id):

@@ -1,4 +1,4 @@
-use std::{error::Error, time::{SystemTime, UNIX_EPOCH}};
+use std::{error::Error};
 
 use mongodb::{Collection, bson::doc, options::UpdateOptions};
 use riven::{RiotApi, consts::PlatformRoute};
